@@ -66,7 +66,10 @@ export function RecentTransactionsCard() {
                 return (
                   <li
                     key={tx.id}
-                    className="flex flex-wrap items-center gap-2 gap-y-3 border-b border-border/50 pb-4 last:border-0 last:pb-0 sm:flex-nowrap sm:gap-4"
+                    className={cn(
+                      "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3",
+                      isIncome ? "border-l-green-500" : "border-l-red-500"
+                    )}
                   >
                     <div
                       className={cn(
@@ -78,19 +81,19 @@ export function RecentTransactionsCard() {
                         {category?.name?.slice(0, 1) ?? "?"}
                       </span>
                     </div>
-                    <div className="min-w-0 flex-1 basis-0 sm:basis-auto">
+                    <div className="min-w-0">
                       <p className="font-medium truncate">{category?.name ?? "Unknown"}</p>
                       <p className="text-sm text-muted-foreground truncate">
                         {tx.notes || tx.date}
                       </p>
                     </div>
-                    <div className="w-full shrink-0 text-right text-sm text-muted-foreground sm:w-auto sm:flex-1">
+                    <div className="text-right text-sm text-muted-foreground">
                       {formatDateWithPreference(tx.date, dateFormat)}
                     </div>
                     <Badge
                       variant="secondary"
                       className={cn(
-                        "shrink-0 text-xs",
+                        "w-fit text-xs",
                         isIncome ? "bg-success/15 text-success border-success/30" : "bg-muted"
                       )}
                     >
@@ -98,13 +101,13 @@ export function RecentTransactionsCard() {
                     </Badge>
                     <span
                       className={cn(
-                        "shrink-0 font-semibold",
+                        "font-semibold text-right",
                         isIncome ? "text-success" : "text-foreground"
                       )}
                     >
                       {formatCurrencyWithSign(tx.amount, currency)}
                     </span>
-                    <div className="flex shrink-0 gap-1">
+                    <div className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
