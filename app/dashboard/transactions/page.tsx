@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,8 +51,6 @@ async function fetchTransactionsPage(
 }
 
 export default function TransactionsPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const { getCategoryById, addTransaction, updateTransaction, deleteTransaction } = useBudget();
   const { currency, dateFormat } = useSettings();
   const [list, setList] = useState<Transaction[]>([]);
@@ -75,15 +72,6 @@ export default function TransactionsPage() {
 
   const hasActiveFilters =
     typeFilter !== "all" || dateFrom !== "" || dateTo !== "" || searchQuery !== "";
-
-  useEffect(() => {
-    const add = searchParams.get("add");
-    if (add === "income" || add === "expense") {
-      setEditingTx(null);
-      setAddType(add);
-      setDialogOpen(true);
-    }
-  }, [searchParams]);
 
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
@@ -144,9 +132,6 @@ export default function TransactionsPage() {
     setDialogOpen(false);
     setEditingTx(null);
     setAddType(null);
-    if (searchParams.get("add")) {
-      router.replace("/dashboard/transactions");
-    }
   };
 
   const handleAdded = useCallback((tx: Transaction) => {

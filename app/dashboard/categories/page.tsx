@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   type DeleteCategoryAction,
 } from "@/components/dashboard/delete-category-dialog";
 
-export default function CategoriesPage() {
+function CategoriesPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { categories, transactions, deleteCategory, loading, error, refetch } =
@@ -221,5 +221,19 @@ export default function CategoriesPage() {
         deleting={deleting}
       />
     </div>
+  );
+}
+
+export default function CategoriesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[200px]">
+          <p className="text-muted-foreground">Loading…</p>
+        </div>
+      }
+    >
+      <CategoriesPageContent />
+    </Suspense>
   );
 }

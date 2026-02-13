@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +12,14 @@ import { Plus, TrendingUp, TrendingDown, Tags } from "lucide-react";
 
 export function FloatingActionButton() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const openAddTransaction = (type: "income" | "expense") => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("add", type);
+    router.push(`${pathname}?${params.toString()}`);
+  };
 
   return (
     <div className="fixed bottom-6 right-6 z-50 md:bottom-8 md:right-8">
@@ -26,11 +34,11 @@ export function FloatingActionButton() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="mb-2">
-          <DropdownMenuItem onClick={() => router.push("/dashboard/transactions?add=income")}>
+          <DropdownMenuItem onClick={() => openAddTransaction("income")}>
             <TrendingUp className="h-4 w-4 mr-2 text-success" />
             Add income
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push("/dashboard/transactions?add=expense")}>
+          <DropdownMenuItem onClick={() => openAddTransaction("expense")}>
             <TrendingDown className="h-4 w-4 mr-2" />
             Add expense
           </DropdownMenuItem>

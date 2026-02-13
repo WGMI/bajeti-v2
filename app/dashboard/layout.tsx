@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { FloatingActionButton } from "@/components/dashboard/floating-action-button";
+import { GlobalAddTransactionDialog } from "@/components/dashboard/global-add-transaction-dialog";
 import { BudgetProvider } from "@/lib/budget-store";
 import { SettingsProvider } from "@/lib/settings-store";
 
@@ -20,7 +22,10 @@ export default function DashboardLayout({
             {children}
           </main>
         </div>
-        <FloatingActionButton />
+        <Suspense fallback={null}>
+          <FloatingActionButton />
+          <GlobalAddTransactionDialog />
+        </Suspense>
       </div>
     </BudgetProvider>
     </SettingsProvider>
