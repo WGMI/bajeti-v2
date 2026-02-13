@@ -4,6 +4,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -35,28 +36,55 @@ const DEFAULT_SETTINGS: AppSettings = {
   firstDayOfWeek: "monday",
 };
 
-function loadSettings(): AppSettings {
+function loadFromCache(): AppSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     return {
-      currency: parsed.currency ?? DEFAULT_SETTINGS.currency,
-      dateFormat: parsed.dateFormat ?? DEFAULT_SETTINGS.dateFormat,
-      firstDayOfWeek: parsed.firstDayOfWeek ?? DEFAULT_SETTINGS.firstDayOfWeek,
+      currency: (parsed.currency ?? DEFAULT_SETTINGS.currency) as CurrencyCode,
+      dateFormat: (parsed.dateFormat ?? DEFAULT_SETTINGS.dateFormat) as DateFormat,
+      firstDayOfWeek: (parsed.firstDayOfWeek ?? DEFAULT_SETTINGS.firstDayOfWeek) as FirstDayOfWeek,
     };
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
-function saveSettings(settings: AppSettings) {
+function saveToCache(settings: AppSettings) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // ignore
+  }
+}
+
+async function fetchSettings(): Promise<AppSettings | null> {
+  try {
+    const res = await fetch("/api/settings");
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      currency: data.currency ?? DEFAULT_SETTINGS.currency,
+      dateFormat: data.dateFormat ?? DEFAULT_SETTINGS.dateFormat,
+      firstDayOfWeek: data.firstDayOfWeek ?? DEFAULT_SETTINGS.firstDayOfWeek,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function persistSettings(settings: AppSettings): Promise<void> {
+  try {
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
+  } catch {
+    // ignore; cache still updated
   }
 }
 
@@ -70,12 +98,22 @@ interface SettingsContextValue extends AppSettings {
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [settings, setSettings] = useState<AppSettings>(() => loadFromCache());
+
+  useEffect(() => {
+    fetchSettings().then((fromDb) => {
+      if (fromDb) {
+        setSettings(fromDb);
+        saveToCache(fromDb);
+      }
+    });
+  }, []);
 
   const setCurrency = useCallback((currency: CurrencyCode) => {
     setSettings((prev) => {
       const next = { ...prev, currency };
-      saveSettings(next);
+      saveToCache(next);
+      persistSettings(next);
       return next;
     });
   }, []);
@@ -83,7 +121,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setDateFormat = useCallback((dateFormat: DateFormat) => {
     setSettings((prev) => {
       const next = { ...prev, dateFormat };
-      saveSettings(next);
+      saveToCache(next);
+      persistSettings(next);
       return next;
     });
   }, []);
@@ -91,7 +130,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setFirstDayOfWeek = useCallback((firstDayOfWeek: FirstDayOfWeek) => {
     setSettings((prev) => {
       const next = { ...prev, firstDayOfWeek };
-      saveSettings(next);
+      saveToCache(next);
+      persistSettings(next);
       return next;
     });
   }, []);
@@ -99,7 +139,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
-      saveSettings(next);
+      saveToCache(next);
+      persistSettings(next);
       return next;
     });
   }, []);
