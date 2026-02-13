@@ -6,13 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Pencil, Trash2, Loader2 } from "lucide-react";
+import { Pencil, Trash2, Loader2, Filter, Search } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
 import { TransactionFormDialog } from "@/components/dashboard/transaction-form-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const PAGE_SIZE = 20;
 const API = "/api";
@@ -22,9 +30,19 @@ type TransactionsResponse = {
   nextCursor: string | null;
 };
 
-async function fetchTransactionsPage(limit: number, cursor: string | null): Promise<TransactionsResponse> {
+type TypeFilter = "all" | "income" | "expense";
+
+async function fetchTransactionsPage(
+  limit: number,
+  cursor: string | null,
+  filters: { type: TypeFilter; dateFrom: string; dateTo: string; search: string }
+): Promise<TransactionsResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
+  if (filters.type !== "all") params.set("type", filters.type);
+  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  if (filters.search.trim()) params.set("search", filters.search.trim());
   const res = await fetch(`${API}/transactions?${params}`, { credentials: "same-origin" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -48,7 +66,15 @@ export default function TransactionsPage() {
   const [addType, setAddType] = useState<CategoryType | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const hasActiveFilters =
+    typeFilter !== "all" || dateFrom !== "" || dateTo !== "" || searchQuery !== "";
 
   useEffect(() => {
     const add = searchParams.get("add");
@@ -62,8 +88,9 @@ export default function TransactionsPage() {
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
     try {
-      const data = await fetchTransactionsPage(PAGE_SIZE, null);
+      const data = await fetchTransactionsPage(PAGE_SIZE, null, currentFilters);
       setList(data.transactions);
       setNextCursor(data.nextCursor);
     } catch (e) {
@@ -73,13 +100,14 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [typeFilter, dateFrom, dateTo, searchQuery]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
+    const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
     try {
-      const data = await fetchTransactionsPage(PAGE_SIZE, nextCursor);
+      const data = await fetchTransactionsPage(PAGE_SIZE, nextCursor, currentFilters);
       setList((prev) => [...prev, ...data.transactions]);
       setNextCursor(data.nextCursor);
     } catch {
@@ -87,7 +115,7 @@ export default function TransactionsPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextCursor, loadingMore]);
+  }, [nextCursor, loadingMore, typeFilter, dateFrom, dateTo, searchQuery]);
 
   useEffect(() => {
     loadFirstPage();
@@ -156,6 +184,18 @@ export default function TransactionsPage() {
     );
   }
 
+  const clearFilters = () => {
+    setTypeFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setSearchQuery("");
+    setSearchInput("");
+  };
+
+  const applySearch = () => {
+    setSearchQuery(searchInput);
+  };
+
   return (
     <>
       <div className="space-y-6">
@@ -163,6 +203,64 @@ export default function TransactionsPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <CardTitle className="text-base font-medium">All Transactions</CardTitle>
           </CardHeader>
+          <div className="px-6 pb-4 flex flex-wrap items-end gap-4 border-b border-border/50">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Filter className="h-4 w-4" />
+              <span className="text-sm font-medium">Filters</span>
+            </div>
+            <div className="flex flex-wrap items-end gap-4 flex-1 min-w-0">
+              <div className="space-y-1.5 min-w-[180px]">
+                <Label className="text-xs text-muted-foreground">Search notes & category</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search…"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && applySearch()}
+                    onBlur={applySearch}
+                    className="h-9 pl-8 pr-4"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Type</Label>
+                <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
+                  <SelectTrigger className="w-[130px] h-9">
+                    <span>{typeFilter === "all" ? "All" : typeFilter === "income" ? "Income" : "Expense"}</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="income">Income</SelectItem>
+                    <SelectItem value="expense">Expense</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">From date</Label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="h-9 w-[140px]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">To date</Label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="h-9 w-[140px]"
+                />
+              </div>
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" className="h-9" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          </div>
           <CardContent>
             {list.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">
