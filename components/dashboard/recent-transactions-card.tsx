@@ -113,39 +113,53 @@ export function RecentTransactionsCard() {
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size={confirmingDeleteId === tx.id || deletingId === tx.id ? "sm" : "icon"}
-                        className={cn(
-                          "h-8 text-destructive hover:text-destructive",
-                          (confirmingDeleteId === tx.id || deletingId === tx.id) ? "min-w-[7rem] gap-2" : "w-8"
-                        )}
-                        disabled={deletingId === tx.id}
-                        onClick={async () => {
-                          if (confirmingDeleteId === tx.id) {
-                            setDeletingId(tx.id);
-                            try {
-                              await deleteTransaction(tx.id);
-                              setConfirmingDeleteId(null);
-                            } finally {
-                              setDeletingId(null);
-                            }
-                          } else {
-                            setConfirmingDeleteId(tx.id);
-                          }
-                        }}
-                      >
-                        {deletingId === tx.id ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Deleting…
-                          </>
-                        ) : confirmingDeleteId === tx.id ? (
-                          "Are you sure?"
-                        ) : (
+                      {confirmingDeleteId === tx.id && !deletingId ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => setConfirmingDeleteId(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 min-w-[7rem] gap-2 text-destructive hover:text-destructive"
+                            onClick={async () => {
+                              setDeletingId(tx.id);
+                              try {
+                                await deleteTransaction(tx.id);
+                                setConfirmingDeleteId(null);
+                              } finally {
+                                setDeletingId(null);
+                              }
+                            }}
+                          >
+                            Are you sure?
+                          </Button>
+                        </>
+                      ) : deletingId === tx.id ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 min-w-[7rem] gap-2 text-destructive hover:text-destructive"
+                          disabled
+                        >
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Deleting…
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => setConfirmingDeleteId(tx.id)}
+                        >
                           <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
+                        </Button>
+                      )}
                     </div>
                   </li>
                 );
