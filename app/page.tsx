@@ -1,65 +1,156 @@
-import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
+import { ArrowRight, PiggyBank, TrendingUp, Shield, PieChart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-export default function Home() {
+export default async function LandingPage() {
+  const { userId } = await auth();
+  if (userId) redirect("/dashboard");
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
+      {/* Header */}
+      <header className="sticky top-0 z-50 w-full border-b border-primary/10 bg-background/90 backdrop-blur-md">
+        <div className="container flex h-14 items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+              <PiggyBank className="h-5 w-5" />
+            </div>
+            <span className="text-xl font-semibold tracking-tight">Bajeti</span>
+          </div>
+          <nav className="hidden gap-6 md:flex">
+            <Link
+              href="#features"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Features
+            </Link>
+            <Link
+              href="#how-it-works"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              How it works
+            </Link>
+          </nav>
+          <Link href="/dashboard">
+            <Button size="sm" className="rounded-full px-4">
+              Get started
+            </Button>
+          </Link>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="container px-4 py-16 sm:px-6 sm:py-24 md:py-32">
+        <div className="mx-auto max-w-3xl text-center">
+          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+            Take control of your money with{" "}
+            <span className="bg-gradient-to-r from-primary to-chart-2 bg-clip-text text-transparent">simple budgeting</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
+            Track spending, set goals, and see where your money goes—all in one
+            clean dashboard. No spreadsheets, no hassle.
+          </p>
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Link href="/dashboard">
+              <Button size="lg" className="w-full rounded-full px-8 sm:w-auto">
+                Open dashboard
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Button variant="outline" size="lg" className="w-full rounded-full px-8 sm:w-auto" asChild>
+              <Link href="#features">See features</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section
+        id="features"
+        className="container border-t border-primary/5 bg-muted/30 px-4 py-16 sm:px-6 sm:py-24"
+      >
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            Everything you need to stay on budget
+          </h2>
+          <p className="mt-4 text-muted-foreground">
+            A single place to view earnings, spending, and goals.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="mx-auto mt-12 grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            {
+              icon: PieChart,
+              title: "Earning & spending summary",
+              description:
+                "See your balance, savings rate, and earning vs spending at a glance.",
+              color: "bg-chart-1/15 text-chart-1",
+            },
+            {
+              icon: TrendingUp,
+              title: "Payment statistics",
+              description:
+                "Track weekly and monthly trends with clear, simple charts.",
+              color: "bg-chart-2/15 text-chart-2",
+            },
+            {
+              icon: Shield,
+              title: "Goals & budgets",
+              description:
+                "Set goals for bills, travel, shopping, and daily expenses with progress bars.",
+              color: "bg-chart-5/15 text-chart-5",
+            },
+          ].map((item) => (
+            <div
+              key={item.title}
+              className={cn(
+                "rounded-2xl border border-primary/5 bg-card p-6 shadow-sm transition-shadow hover:shadow-md hover:border-primary/10"
+              )}
+            >
+              <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", item.color)}>
+                <item.icon className="h-5 w-5" />
+              </div>
+              <h3 className="mt-4 font-semibold">{item.title}</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {item.description}
+              </p>
+            </div>
+          ))}
         </div>
-      </main>
+      </section>
+
+      {/* CTA */}
+      <section className="container px-4 py-16 sm:px-6 sm:py-24">
+        <div className="mx-auto max-w-2xl rounded-3xl border border-primary/10 bg-card p-8 text-center shadow-sm sm:p-12">
+          <h2 className="text-2xl font-bold sm:text-3xl">
+            Ready to manage your budget?
+          </h2>
+          <p className="mt-4 text-muted-foreground">
+            Start tracking your money in under a minute. No sign-up required to
+            try the dashboard.
+          </p>
+          <Link href="/dashboard" className="mt-6 inline-block">
+            <Button size="lg" className="rounded-full px-8">
+              Go to dashboard
+            </Button>
+          </Link>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t py-8">
+        <div className="container flex flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6">
+          <div className="flex items-center gap-2">
+            <PiggyBank className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium">Bajeti</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            A simple personal budgeting tool.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
