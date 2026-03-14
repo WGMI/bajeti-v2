@@ -13,12 +13,15 @@ import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { Transaction } from "@/lib/budget-types";
 import { TransactionFormDialog } from "./transaction-form-dialog";
+import { TransactionDetailDialog } from "./transaction-detail-dialog";
 
 export function RecentTransactionsCard() {
   const { transactions, getCategoryById, deleteTransaction } = useBudget();
   const { currency, dateFormat } = useSettings();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -27,6 +30,11 @@ export function RecentTransactionsCard() {
   );
   const recent = sorted.slice(0, 5);
 
+  const openDetail = (tx: Transaction) => {
+    setConfirmingDeleteId(null);
+    setDetailTx(tx);
+    setDetailOpen(true);
+  };
   const openEdit = (tx: Transaction) => {
     setConfirmingDeleteId(null);
     setEditingTx(tx);
@@ -35,6 +43,12 @@ export function RecentTransactionsCard() {
   const handleClose = () => {
     setDialogOpen(false);
     setEditingTx(null);
+  };
+  const handleDetailEdit = (tx: Transaction) => {
+    setDetailOpen(false);
+    setDetailTx(null);
+    setEditingTx(tx);
+    setDialogOpen(true);
   };
 
   return (
@@ -66,8 +80,12 @@ export function RecentTransactionsCard() {
                 return (
                   <li
                     key={tx.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDetail(tx)}
+                    onKeyDown={(e) => e.key === "Enter" && openDetail(tx)}
                     className={cn(
-                      "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3",
+                      "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3 cursor-pointer hover:bg-muted/50 rounded-r transition-colors",
                       isIncome ? "border-l-green-500" : "border-l-red-500"
                     )}
                   >
@@ -107,7 +125,10 @@ export function RecentTransactionsCard() {
                     >
                       {formatCurrencyWithSign(tx.amount, currency)}
                     </span>
-                    <div className="flex justify-end gap-1">
+                    <div
+                      className="flex justify-end gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Button
                         variant="ghost"
                         size="icon"
@@ -172,6 +193,12 @@ export function RecentTransactionsCard() {
         </CardContent>
       </Card>
 
+      <TransactionDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        transaction={detailTx}
+        onEdit={handleDetailEdit}
+      />
       <TransactionFormDialog
         open={dialogOpen}
         onOpenChange={handleClose}

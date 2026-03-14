@@ -98,9 +98,12 @@ interface SettingsContextValue extends AppSettings {
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(() => loadFromCache());
+  // Always use DEFAULT_SETTINGS for initial state so server and client match (avoids hydration mismatch).
+  // Real values are applied in useEffect from localStorage and/or API.
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
+    queueMicrotask(() => setSettings(loadFromCache()));
     fetchSettings().then((fromDb) => {
       if (fromDb) {
         setSettings(fromDb);

@@ -9,7 +9,11 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { useSettings, CURRENCY_OPTIONS } from "@/lib/settings-store";
-import type { CurrencyCode, DateFormat, FirstDayOfWeek } from "@/lib/settings-store";
+import type {
+  CurrencyCode,
+  DateFormat,
+  FirstDayOfWeek,
+} from "@/lib/settings-store";
 import { Settings as SettingsIcon } from "lucide-react";
 
 export default function SettingsPage() {

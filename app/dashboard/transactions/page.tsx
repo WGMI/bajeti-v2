@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,7 @@ import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
 import { TransactionFormDialog } from "@/components/dashboard/transaction-form-dialog";
+import { TransactionDetailDialog } from "@/components/dashboard/transaction-detail-dialog";
 import {
   Select,
   SelectContent,
@@ -50,8 +52,9 @@ async function fetchTransactionsPage(
   return res.json();
 }
 
-export default function TransactionsPage() {
-  const { getCategoryById, addTransaction, updateTransaction, deleteTransaction } = useBudget();
+function TransactionsPageContent() {
+  const searchParams = useSearchParams();
+  const { getCategoryById, deleteTransaction } = useBudget();
   const { currency, dateFormat } = useSettings();
   const [list, setList] = useState<Transaction[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -61,11 +64,13 @@ export default function TransactionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [addType, setAddType] = useState<CategoryType | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get("dateFrom") ?? "");
+  const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -110,6 +115,13 @@ export default function TransactionsPage() {
   }, [loadFirstPage]);
 
   useEffect(() => {
+    const from = searchParams.get("dateFrom") ?? "";
+    const to = searchParams.get("dateTo") ?? "";
+    setDateFrom(from);
+    setDateTo(to);
+  }, [searchParams]);
+
+  useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -122,6 +134,11 @@ export default function TransactionsPage() {
     return () => observer.disconnect();
   }, [loadMore]);
 
+  const openDetail = (tx: Transaction) => {
+    setConfirmingDeleteId(null);
+    setDetailTx(tx);
+    setDetailOpen(true);
+  };
   const openEdit = (tx: Transaction) => {
     setConfirmingDeleteId(null);
     setEditingTx(tx);
@@ -132,6 +149,13 @@ export default function TransactionsPage() {
     setDialogOpen(false);
     setEditingTx(null);
     setAddType(null);
+  };
+  const handleDetailEdit = (tx: Transaction) => {
+    setDetailOpen(false);
+    setDetailTx(null);
+    setEditingTx(tx);
+    setAddType(null);
+    setDialogOpen(true);
   };
 
   const handleAdded = useCallback((tx: Transaction) => {
@@ -259,8 +283,12 @@ export default function TransactionsPage() {
                   return (
                     <li
                       key={tx.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openDetail(tx)}
+                      onKeyDown={(e) => e.key === "Enter" && openDetail(tx)}
                       className={cn(
-                        "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3",
+                        "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3 cursor-pointer hover:bg-muted/50 rounded-r transition-colors",
                         isIncome ? "border-l-green-500" : "border-l-red-500"
                       )}
                     >
@@ -304,7 +332,10 @@ export default function TransactionsPage() {
                       >
                         {formatCurrencyWithSign(tx.amount, currency)}
                       </span>
-                      <div className="flex justify-end gap-1">
+                      <div
+                        className="flex justify-end gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Button
                           variant="ghost"
                           size="icon"
@@ -380,6 +411,17 @@ export default function TransactionsPage() {
         </Card>
       </div>
 
+      <TransactionDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        transaction={detailTx}
+        onEdit={handleDetailEdit}
+        onDeleted={(id) => {
+          setList((prev) => prev.filter((t) => t.id !== id));
+          setDetailOpen(false);
+          setDetailTx(null);
+        }}
+      />
       <TransactionFormDialog
         open={dialogOpen}
         onOpenChange={handleClose}
@@ -389,5 +431,19 @@ export default function TransactionsPage() {
         onUpdated={handleUpdated}
       />
     </>
+  );
+}
+
+export default function TransactionsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[200px]">
+          <p className="text-muted-foreground">Loading…</p>
+        </div>
+      }
+    >
+      <TransactionsPageContent />
+    </Suspense>
   );
 }

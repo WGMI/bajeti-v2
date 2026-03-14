@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
+import { parseSMS } from "@/lib/sms-parser";
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -73,9 +74,6 @@ function TransactionFormFields({
     useBudget();
   const isEdit = !!editingTransaction;
   const typeLock = initialType ?? editingTransaction?.type ?? null;
-  const relevantCategories = typeLock
-    ? categories.filter((c) => c.type === typeLock)
-    : categories;
 
   const initial = getInitialValues(editingTransaction, typeLock, categories);
   const [amount, setAmount] = useState(initial.amount);
@@ -83,8 +81,45 @@ function TransactionFormFields({
   const [date, setDate] = useState(initial.date);
   const [notes, setNotes] = useState(initial.notes);
 
+  const selectedCategory = categoryId ? getCategoryById(categoryId) : null;
+  // When a category is selected, show categories of that type (so after "Use from SMS" the dropdown matches).
+  const relevantCategories = selectedCategory
+    ? categories.filter((c) => c.type === selectedCategory.type)
+    : typeLock
+      ? categories.filter((c) => c.type === typeLock)
+      : categories;
+
+  const [showPasteSms, setShowPasteSms] = useState(false);
+  const [smsText, setSmsText] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleParseSms = () => {
+    const trimmed = smsText.trim();
+    if (!trimmed) return;
+    console.log("[SMS dialog] typeLock (user's choice):", typeLock);
+    const result = parseSMS(trimmed);
+    console.log("[SMS dialog] parsed result.type:", result.type);
+    setNotes(result.message);
+    if (result.amount > 0) setAmount(String(result.amount));
+    if (result.date) setDate(result.date);
+    // Always set category from SMS when we detect income/expense so the transaction
+    // is saved as what the message says (e.g. "paid to" → expense).
+    if (result.type === "income" || result.type === "expense") {
+      const firstOfType = categories.find((c) => c.type === result.type)?.id;
+      console.log("[SMS dialog] setting category from SMS. result.type:", result.type, "firstOfType:", firstOfType);
+      if (firstOfType) {
+        setCategoryId(firstOfType);
+      } else {
+        console.warn("[SMS dialog] no category found for type:", result.type, "– ensure there is at least one", result.type, "category.");
+      }
+    } else {
+      console.log("[SMS dialog] parsed type is neither; not changing category.");
+    }
+    setShowPasteSms(false);
+    setSmsText("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +160,33 @@ function TransactionFormFields({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {!isEdit && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPasteSms((v) => !v)}
+          >
+            {showPasteSms ? "Hide paste SMS" : "Paste SMS"}
+          </Button>
+          {showPasteSms && (
+            <div className="space-y-2">
+              <Label htmlFor="smsPaste">SMS message</Label>
+              <textarea
+                id="smsPaste"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="Paste the full SMS message here..."
+                value={smsText}
+                onChange={(e) => setSmsText(e.target.value)}
+              />
+              <Button type="button" size="sm" onClick={handleParseSms}>
+                Use from SMS
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="amount">Amount</Label>
         <Input
@@ -181,7 +243,12 @@ function TransactionFormFields({
         <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        <Button type="submit" disabled={submitting}>
+        <Button
+          type="submit"
+          variant={typeLock === "expense" ? "destructive" : "default"}
+          className={typeLock === "expense" ? "text-white" : undefined}
+          disabled={submitting}
+        >
           {submitting ? "Saving…" : isEdit ? "Save changes" : "Add transaction"}
         </Button>
       </DialogFooter>
@@ -204,7 +271,9 @@ export function TransactionFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className={`sm:max-w-md ${typeLock === "expense" ? "border-l-4 border-l-destructive" : ""}`}
+      >
         <DialogHeader>
           <DialogTitle>
             {isEdit

@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Bell, Menu } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarNavContent } from "./dashboard-sidebar";
@@ -35,10 +35,14 @@ export function DashboardHeader() {
             3
           </Badge>
         </Button>
-        <Avatar className="h-9 w-9">
-          <AvatarImage src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=96&h=96&fit=crop" alt="User" />
-          <AvatarFallback>VP</AvatarFallback>
-        </Avatar>
+        <UserButton
+          afterSignOutUrl="/"
+          appearance={{
+            elements: {
+              avatarBox: "h-9 w-9",
+            },
+          }}
+        />
       </div>
     </header>
   );
