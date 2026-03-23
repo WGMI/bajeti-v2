@@ -1,0 +1,61 @@
+# Receiving SMS from the Mobile App
+
+This app can receive money-related SMS messages from your mobile app (with Clerk auth), parse them, and create transactions automatically.
+
+## Backend (this app)
+
+- **Endpoint:** `POST /api/sms`
+- **Auth:** Clerk. The request must include a valid Clerk session (same as your other API routes). The mobile app should send the session token so the backend can identify the user via `auth()`.
+
+## Request format
+
+```json
+{
+  "message": "Full SMS body text (e.g. M-PESA message)",
+  "timestamp": 1710000000000,
+  "includeFeeInExpense": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | Raw SMS body. Parsed for amount, type (income/expense), date, fee. |
+| `timestamp` | number | No | Unix ms; used for date when SMS has no date. |
+| `includeFeeInExpense` | boolean | No | If true, fee is added to expense amount. Default `false`. |
+
+## Response
+
+- **200** – Success.
+  - `parsed`: `{ message, type, amount, date, fee }` (type is `"income"` | `"expense"` | `"neither"`).
+  - `transaction`: present only when a transaction was created (type income/expense, amount > 0, date present).
+- **400** – Invalid body (e.g. missing `message`) or user has no category for the parsed type.
+- **401** – Not authenticated (missing or invalid Clerk session).
+- **500** – Server error.
+
+## What the mobile app needs to do
+
+1. **Use Clerk on the mobile app**  
+   Sign the user in with Clerk (e.g. [Clerk React Native / Expo](https://clerk.com/docs/quickstarts/expo)) so you have a session.
+
+2. **Send the session with the request**  
+   When posting to `POST /api/sms`, include the Clerk session so the backend sees the same user:
+   - **Option A:** Use Clerk’s `getToken()` and send `Authorization: Bearer <token>`.
+   - **Option B:** If your app uses cookie-based sessions and the client supports cookies, use the same cookie (e.g. in a WebView or HTTP client that sends cookies).
+
+3. **When you receive an SMS** (e.g. via Android SMS permission / listener), call:
+   ```http
+   POST https://your-bajeti-api-host/api/sms
+   Content-Type: application/json
+   Authorization: Bearer <clerk_session_token>
+
+   { "message": "<full SMS body>", "timestamp": <optional_unix_ms> }
+   ```
+
+4. **Base URL**  
+   Point the mobile app at your deployed Next.js app (e.g. `https://your-app.vercel.app`) or your dev URL (e.g. `http://localhost:3000` for local testing).
+
+## Behavior
+
+- The same parser as the web “Paste SMS” flow is used (`lib/sms-parser.ts`): M-PESA-style messages, KES amounts, “received” → income, “sent to” / “paid to” / etc. → expense.
+- If the parsed type is `"income"` or `"expense"` and amount and date are present, a transaction is created using the user’s **first category** of that type (categories are created from defaults if the user has none).
+- Messages parsed as `"neither"` or “cancelled” or with zero amount do not create a transaction; the response still includes `parsed` for the client to show or log.
