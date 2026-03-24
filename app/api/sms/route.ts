@@ -50,13 +50,21 @@ export async function POST(request: Request) {
       includeFeeInExpense: Boolean(includeFeeInExpense),
     });
 
-    // Skip creating a transaction for "neither", cancelled, or zero amount
-    if (
-      parsed.type === "neither" ||
-      parsed.amount <= 0 ||
-      !parsed.date
-    ) {
+    // Skip creating a transaction for invalid parse results and inform client why.
+    let skipReason: string | null = null;
+    if (parsed.type === "neither") {
+      skipReason = "Message did not match an income or expense transaction";
+    } else if (parsed.amount <= 0) {
+      skipReason = "Parsed transaction amount is missing or invalid";
+    } else if (!parsed.date) {
+      skipReason = "Parsed transaction date is missing or invalid";
+    }
+
+    if (skipReason) {
       return NextResponse.json({
+        status: "ignored",
+        transactionCreated: false,
+        reason: skipReason,
         parsed: {
           message: parsed.message,
           type: parsed.type,
@@ -95,6 +103,9 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: `No ${parsed.type} category found for user`,
+          status: "ignored",
+          transactionCreated: false,
+          reason: `No category found for parsed type: ${parsed.type}`,
           parsed: {
             message: parsed.message,
             type: parsed.type,
@@ -121,6 +132,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
+      status: "created",
+      transactionCreated: true,
       parsed: {
         message: parsed.message,
         type: parsed.type,

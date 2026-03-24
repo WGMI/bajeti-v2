@@ -87,13 +87,14 @@ export function parseSMS(
   }
   console.log("[SMS parse] resolved type:", type);
 
-  // Extract amount - first amount is usually the transaction amount
+  // Extract amount - first currency amount in message is usually transaction amount.
+  // Support both "KES 2000" and "2000 KES" formats.
   const amountRegex =
-    /(?:KES|Ksh|Kshs\.?)\s*([\d\s,]+\.\d{1,2}|[\d\s,]+)/gi;
+    /(?:KES|Ksh|Kshs\.?)\s*([\d\s,]+\.\d{1,2}|[\d\s,]+)|([\d\s,]+\.\d{1,2}|[\d\s,]+)\s*(?:KES|Ksh|Kshs\.?)/gi;
   const allMatches: number[] = [];
 
   for (const match of message.matchAll(amountRegex)) {
-    const raw = match[1] ?? "";
+    const raw = match[1] ?? match[2] ?? "";
     const normalized = raw.replace(/[\s,]/g, "");
     const value = parseFloat(normalized);
     if (!Number.isNaN(value)) {
@@ -105,12 +106,13 @@ export function parseSMS(
     amount = allMatches[0];
   }
 
-  // Extract fee (look for phrases like "Transaction cost Ksh...")
+  // Extract fee (look for phrases like "Transaction cost Ksh..." or "Charges 25.51 KES")
   const feeRegex =
-    /(Transaction cost|charges|Interest charged).*?(?:KES|Ksh|Kshs\.?)\s*([\d\s,]+\.\d{1,2}|[\d\s,]+)/i;
+    /(Transaction cost|charges|Interest charged).*?(?:(?:KES|Ksh|Kshs\.?)\s*([\d\s,]+\.\d{1,2}|[\d\s,]+)|([\d\s,]+\.\d{1,2}|[\d\s,]+)\s*(?:KES|Ksh|Kshs\.?))/i;
   const feeMatch = message.match(feeRegex);
-  if (feeMatch && feeMatch[2]) {
-    const normalized = feeMatch[2].replace(/[\s,]/g, "");
+  const feeRaw = feeMatch?.[2] ?? feeMatch?.[3] ?? "";
+  if (feeRaw) {
+    const normalized = feeRaw.replace(/[\s,]/g, "");
     const value = parseFloat(normalized);
     if (!Number.isNaN(value)) {
       fee = value;
