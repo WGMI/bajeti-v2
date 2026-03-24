@@ -91,6 +91,7 @@ function TransactionFormFields({
 
   const [showPasteSms, setShowPasteSms] = useState(false);
   const [smsText, setSmsText] = useState("");
+  const [smsParseFeedback, setSmsParseFeedback] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -98,9 +99,24 @@ function TransactionFormFields({
   const handleParseSms = () => {
     const trimmed = smsText.trim();
     if (!trimmed) return;
+    setSmsParseFeedback(null);
     console.log("[SMS dialog] typeLock (user's choice):", typeLock);
     const result = parseSMS(trimmed);
     console.log("[SMS dialog] parsed result.type:", result.type);
+
+    if (result.type === "neither") {
+      setSmsParseFeedback("This SMS did not look like an income or expense transaction.");
+      return;
+    }
+    if (result.amount <= 0) {
+      setSmsParseFeedback("The SMS was recognized, but the amount is missing or invalid.");
+      return;
+    }
+    if (!result.date) {
+      setSmsParseFeedback("The SMS was recognized, but the date is missing or invalid.");
+      return;
+    }
+
     setNotes(result.message);
     if (result.amount > 0) setAmount(String(result.amount));
     if (result.date) setDate(result.date);
@@ -119,6 +135,7 @@ function TransactionFormFields({
     }
     setShowPasteSms(false);
     setSmsText("");
+    setSmsParseFeedback(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -183,6 +200,9 @@ function TransactionFormFields({
               <Button type="button" size="sm" onClick={handleParseSms}>
                 Use from SMS
               </Button>
+              {smsParseFeedback && (
+                <p className="text-sm text-destructive">{smsParseFeedback}</p>
+              )}
             </div>
           )}
         </div>
