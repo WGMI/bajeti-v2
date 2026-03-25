@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import { createHash } from "crypto";
 
 type TransactionRow = {
   id: string;
@@ -20,6 +21,10 @@ function rowToTransaction(row: TransactionRow) {
     notes: row.notes ?? "",
     type: row.type as "income" | "expense",
   };
+}
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
 const DEFAULT_LIMIT = 20;
@@ -158,7 +163,7 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
-    const { amount, categoryId, date, notes = "", type } = body;
+    const { amount, categoryId, date, notes = "", type, idempotencyKey } = body;
     if (
       amount == null ||
       !categoryId ||
@@ -172,13 +177,86 @@ export async function POST(request: Request) {
     if (Number.isNaN(numAmount)) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
+    const normalizedIdempotencyKey =
+      typeof idempotencyKey === "string" && idempotencyKey.trim().length > 0
+        ? idempotencyKey.trim().slice(0, 255)
+        : null;
+    const hashedIdempotencyKey = normalizedIdempotencyKey ? sha256(normalizedIdempotencyKey) : null;
+    if (normalizedIdempotencyKey) {
+      console.log("[POST /api/transactions] idempotency key provided", {
+        userId,
+        idempotencyKey: normalizedIdempotencyKey,
+        hashedIdempotencyKey,
+      });
+      const existingRows = await sql`
+        SELECT id, amount, category_id, date, notes, type
+        FROM transactions
+        WHERE user_id = ${userId}
+          AND (
+            sms_idempotency_key = ${hashedIdempotencyKey}
+            OR sms_idempotency_key = ${normalizedIdempotencyKey}
+          )
+        LIMIT 1
+      `;
+      const existing = existingRows[0] as TransactionRow | undefined;
+      if (existing) {
+        console.log("[POST /api/transactions] duplicate found by pre-check", {
+          userId,
+          idempotencyKey: normalizedIdempotencyKey,
+          hashedIdempotencyKey,
+          existingTransactionId: existing.id,
+        });
+        return NextResponse.json(rowToTransaction(existing));
+      }
+    }
     const rows = await sql`
-      INSERT INTO transactions (user_id, amount, category_id, date, notes, type)
-      VALUES (${userId}, ${numAmount}, ${categoryId}, ${date}, ${notes}, ${type}::category_type)
+      INSERT INTO transactions (user_id, amount, category_id, date, notes, type, sms_idempotency_key)
+      VALUES (
+        ${userId},
+        ${numAmount},
+        ${categoryId},
+        ${date},
+        ${notes},
+        ${type}::category_type,
+        ${hashedIdempotencyKey}
+      )
+      ON CONFLICT DO NOTHING
       RETURNING id, amount, category_id, date, notes, type
     `;
     const row = rows[0] as TransactionRow | undefined;
-    if (!row) return NextResponse.json({ error: "Insert failed" }, { status: 500 });
+    if (!row) {
+      if (!normalizedIdempotencyKey) {
+        return NextResponse.json({ error: "Insert failed" }, { status: 500 });
+      }
+      console.log("[POST /api/transactions] duplicate detected by idempotency key", {
+        userId,
+        idempotencyKey: normalizedIdempotencyKey,
+        hashedIdempotencyKey,
+      });
+      const existingRows = await sql`
+        SELECT id, amount, category_id, date, notes, type
+        FROM transactions
+        WHERE user_id = ${userId}
+          AND (
+            sms_idempotency_key = ${hashedIdempotencyKey}
+            OR sms_idempotency_key = ${normalizedIdempotencyKey}
+          )
+        LIMIT 1
+      `;
+      const existing = existingRows[0] as TransactionRow | undefined;
+      if (!existing) {
+        return NextResponse.json({ error: "Insert failed" }, { status: 500 });
+      }
+      return NextResponse.json(rowToTransaction(existing));
+    }
+    if (normalizedIdempotencyKey) {
+      console.log("[POST /api/transactions] inserted with idempotency key", {
+        userId,
+        idempotencyKey: normalizedIdempotencyKey,
+        hashedIdempotencyKey,
+        transactionId: row.id,
+      });
+    }
     return NextResponse.json(rowToTransaction(row));
   } catch (e) {
     console.error(e);

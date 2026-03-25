@@ -20,6 +20,7 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
 import { parseSMS } from "@/lib/sms-parser";
+import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -70,7 +71,7 @@ function TransactionFormFields({
   onAdded?: (transaction: Transaction) => void;
   onUpdated?: (transaction: Transaction) => void;
 }) {
-  const { categories, addTransaction, updateTransaction, getCategoryById } =
+  const { categories, transactions, addTransaction, updateTransaction, getCategoryById } =
     useBudget();
   const isEdit = !!editingTransaction;
   const typeLock = initialType ?? editingTransaction?.type ?? null;
@@ -92,9 +93,11 @@ function TransactionFormFields({
   const [showPasteSms, setShowPasteSms] = useState(false);
   const [smsText, setSmsText] = useState("");
   const [smsParseFeedback, setSmsParseFeedback] = useState<string | null>(null);
+  const [smsIdempotencyKey, setSmsIdempotencyKey] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
 
   const handleParseSms = () => {
     const trimmed = smsText.trim();
@@ -110,16 +113,26 @@ function TransactionFormFields({
     }
     if (result.amount <= 0) {
       setSmsParseFeedback("The SMS was recognized, but the amount is missing or invalid.");
+      setSmsIdempotencyKey(null);
       return;
     }
     if (!result.date) {
       setSmsParseFeedback("The SMS was recognized, but the date is missing or invalid.");
+      setSmsIdempotencyKey(null);
       return;
     }
 
     setNotes(result.message);
     if (result.amount > 0) setAmount(String(result.amount));
     if (result.date) setDate(result.date);
+    setSmsIdempotencyKey(
+      buildSmsIdempotencyKey({
+        type: result.type,
+        amount: result.amount,
+        date: result.date,
+        transactionRef: result.transactionRef,
+      })
+    );
     // Always set category from SMS when we detect income/expense so the transaction
     // is saved as what the message says (e.g. "paid to" → expense).
     if (result.type === "income" || result.type === "expense") {
@@ -132,6 +145,7 @@ function TransactionFormFields({
       }
     } else {
       console.log("[SMS dialog] parsed type is neither; not changing category.");
+      setSmsIdempotencyKey(null);
     }
     setShowPasteSms(false);
     setSmsText("");
@@ -146,6 +160,7 @@ function TransactionFormFields({
     if (!category) return;
     const type = category.type;
     setSubmitError(null);
+    setSubmitMessage(null);
     setSubmitting(true);
     try {
       if (isEdit && editingTransaction) {
@@ -164,7 +179,13 @@ function TransactionFormFields({
           date,
           notes,
           type,
+          idempotencyKey: smsIdempotencyKey ?? undefined,
         });
+        const alreadyExists = transactions.some((t) => t.id === created.id);
+        if (alreadyExists) {
+          setSubmitMessage("Duplicate SMS ignored: this transaction is already saved.");
+          return;
+        }
         onAdded?.(created);
       }
       onClose();
@@ -258,6 +279,9 @@ function TransactionFormFields({
       </div>
       {submitError && (
         <p className="text-sm text-destructive">{submitError}</p>
+      )}
+      {submitMessage && (
+        <p className="text-sm text-muted-foreground">{submitMessage}</p>
       )}
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

@@ -26,8 +26,12 @@ This app can receive money-related SMS messages from your mobile app (with Clerk
 ## Response
 
 - **200** – Success.
-  - `parsed`: `{ message, type, amount, date, fee }` (type is `"income"` | `"expense"` | `"neither"`).
+  - `parsed`: `{ message, type, amount, date, fee, transactionRef }` (type is `"income"` | `"expense"` | `"neither"`).
   - `transaction`: present only when a transaction was created (type income/expense, amount > 0, date present).
+  - `status` can be:
+    - `created` when a new transaction is inserted.
+    - `duplicate` when the same SMS payload is resent (returns the existing transaction).
+    - `ignored` when parser output is not actionable.
 - **400** – Invalid body (e.g. missing `message`) or user has no category for the parsed type.
 - **401** – Not authenticated (missing or invalid Clerk session).
 - **500** – Server error.
@@ -58,4 +62,5 @@ This app can receive money-related SMS messages from your mobile app (with Clerk
 
 - The same parser as the web “Paste SMS” flow is used (`lib/sms-parser.ts`): M-PESA-style messages, KES amounts, “received” → income, “sent to” / “paid to” / etc. → expense.
 - If the parsed type is `"income"` or `"expense"` and amount and date are present, a transaction is created using the user’s **first category** of that type (categories are created from defaults if the user has none).
+- Duplicate prevention is idempotent: a deterministic key (`user + parsed type + amount + date + tx reference`) is stored on the transaction row, and duplicate SMS submissions return the existing transaction instead of creating a new one.
 - Messages parsed as `"neither"` or “cancelled” or with zero amount do not create a transaction; the response still includes `parsed` for the client to show or log.

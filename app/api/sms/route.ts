@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { parseSMS } from "@/lib/sms-parser";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
+import { createHash } from "crypto";
+import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 
 type CategoryRow = { id: string; name: string; type: string };
 type TransactionRow = {
@@ -13,6 +15,14 @@ type TransactionRow = {
   notes: string | null;
   type: string;
 };
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function normalizeForHash(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
 
 /**
  * POST /api/sms
@@ -71,6 +81,7 @@ export async function POST(request: Request) {
           amount: parsed.amount,
           date: parsed.date,
           fee: parsed.fee,
+          transactionRef: parsed.transactionRef,
         },
       });
     }
@@ -112,24 +123,146 @@ export async function POST(request: Request) {
             amount: parsed.amount,
             date: parsed.date,
             fee: parsed.fee,
+            transactionRef: parsed.transactionRef,
           },
         },
         { status: 400 }
       );
     }
 
+    const rawMessageHash = sha256(normalizeForHash(parsed.message));
+    const smsIdempotencyKey = sha256(
+      buildSmsIdempotencyKey({
+        type: parsed.type as "income" | "expense",
+        amount: parsed.amount,
+        date: parsed.date,
+        transactionRef: parsed.transactionRef,
+      })
+    );
+    console.log("[POST /api/sms] dedupe key computed", {
+      userId,
+      parsedType: parsed.type,
+      parsedAmount: parsed.amount,
+      parsedDate: parsed.date,
+      transactionRef: parsed.transactionRef,
+      smsIdempotencyKey,
+      rawMessageHash,
+    });
+    const existingRows = await sql`
+      SELECT id, amount, category_id, date, notes, type
+      FROM transactions
+      WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
+      LIMIT 1
+    `;
+    const existing = existingRows[0] as TransactionRow | undefined;
+    if (existing) {
+      console.log("[POST /api/sms] duplicate found by pre-check", {
+        userId,
+        smsIdempotencyKey,
+        existingTransactionId: existing.id,
+      });
+      return NextResponse.json({
+        status: "duplicate",
+        transactionCreated: false,
+        reason: "SMS already processed",
+        parsed: {
+          message: parsed.message,
+          type: parsed.type,
+          amount: parsed.amount,
+          date: parsed.date,
+          fee: parsed.fee,
+          transactionRef: parsed.transactionRef,
+        },
+        transaction: {
+          id: existing.id,
+          amount: Number(existing.amount),
+          categoryId: existing.category_id,
+          date: existing.date,
+          notes: existing.notes ?? "",
+          type: existing.type as "income" | "expense",
+        },
+      });
+    }
+
     const rows = await sql`
-      INSERT INTO transactions (user_id, amount, category_id, date, notes, type)
-      VALUES (${userId}, ${parsed.amount}, ${category.id}, ${parsed.date}, ${parsed.message}, ${parsed.type}::category_type)
+      INSERT INTO transactions (
+        user_id,
+        amount,
+        category_id,
+        date,
+        notes,
+        type,
+        sms_idempotency_key,
+        sms_raw_hash
+      )
+      VALUES (
+        ${userId},
+        ${parsed.amount},
+        ${category.id},
+        ${parsed.date},
+        ${parsed.message},
+        ${parsed.type}::category_type,
+        ${smsIdempotencyKey},
+        ${rawMessageHash}
+      )
+      ON CONFLICT DO NOTHING
       RETURNING id, amount, category_id, date, notes, type
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {
-      return NextResponse.json(
-        { error: "Failed to create transaction", parsed },
-        { status: 500 }
-      );
+      console.log("[POST /api/sms] duplicate detected by unique index", {
+        userId,
+        smsIdempotencyKey,
+      });
+      const existingRowsAfterConflict = await sql`
+        SELECT id, amount, category_id, date, notes, type
+        FROM transactions
+        WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
+        LIMIT 1
+      `;
+      const existingAfterConflict = existingRowsAfterConflict[0] as TransactionRow | undefined;
+      if (!existingAfterConflict) {
+        console.warn("[POST /api/sms] dedupe conflict but no existing row found", {
+          userId,
+          smsIdempotencyKey,
+        });
+        return NextResponse.json(
+          { error: "Failed to create transaction", parsed },
+          { status: 500 }
+        );
+      }
+      console.log("[POST /api/sms] returning existing transaction for duplicate SMS", {
+        userId,
+        smsIdempotencyKey,
+        existingTransactionId: existingAfterConflict.id,
+      });
+      return NextResponse.json({
+        status: "duplicate",
+        transactionCreated: false,
+        reason: "SMS already processed",
+        parsed: {
+          message: parsed.message,
+          type: parsed.type,
+          amount: parsed.amount,
+          date: parsed.date,
+          fee: parsed.fee,
+          transactionRef: parsed.transactionRef,
+        },
+        transaction: {
+          id: existingAfterConflict.id,
+          amount: Number(existingAfterConflict.amount),
+          categoryId: existingAfterConflict.category_id,
+          date: existingAfterConflict.date,
+          notes: existingAfterConflict.notes ?? "",
+          type: existingAfterConflict.type as "income" | "expense",
+        },
+      });
     }
+    console.log("[POST /api/sms] transaction inserted (not duplicate)", {
+      userId,
+      smsIdempotencyKey,
+      transactionId: row.id,
+    });
 
     return NextResponse.json({
       status: "created",
@@ -140,6 +273,7 @@ export async function POST(request: Request) {
         amount: parsed.amount,
         date: parsed.date,
         fee: parsed.fee,
+        transactionRef: parsed.transactionRef,
       },
       transaction: {
         id: row.id,

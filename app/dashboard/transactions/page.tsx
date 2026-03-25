@@ -159,7 +159,7 @@ function TransactionsPageContent() {
   };
 
   const handleAdded = useCallback((tx: Transaction) => {
-    setList((prev) => [tx, ...prev]);
+    setList((prev) => (prev.some((t) => t.id === tx.id) ? prev : [tx, ...prev]));
   }, []);
 
   const handleUpdated = useCallback((tx: Transaction) => {

@@ -26,7 +26,9 @@ interface BudgetState {
 }
 
 interface BudgetActions {
-  addTransaction: (tx: Omit<Transaction, "id">) => Promise<Transaction>;
+  addTransaction: (
+    tx: Omit<Transaction, "id"> & { idempotencyKey?: string }
+  ) => Promise<Transaction>;
   updateTransaction: (id: string, tx: Partial<Transaction>) => Promise<Transaction>;
   deleteTransaction: (id: string) => Promise<void>;
   addCategory: (cat: Omit<Category, "id">) => Promise<void>;
@@ -73,12 +75,12 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, [fetchData]);
 
   const addTransaction = useCallback(
-    async (tx: Omit<Transaction, "id">) => {
+    async (tx: Omit<Transaction, "id"> & { idempotencyKey?: string }) => {
       const created = await fetchJson<Transaction>(`${API}/transactions`, {
         method: "POST",
         body: JSON.stringify(tx),
       });
-      setTransactions((prev) => [created, ...prev]);
+      setTransactions((prev) => (prev.some((t) => t.id === created.id) ? prev : [created, ...prev]));
       return created;
     },
     []

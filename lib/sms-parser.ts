@@ -6,6 +6,7 @@ export interface SmsParseResult {
   amount: number;
   date: string;
   fee: number;
+  transactionRef: string | null;
 }
 
 export interface ParseSmsOptions {
@@ -19,6 +20,39 @@ function formatDateFromTimestamp(timestamp: number): string {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function extractTransactionRef(message: string): string | null {
+  // Typical M-PESA format: "UC4L68HQ9G Confirmed. ..."
+  const confirmedPrefixMatch = message.match(
+    /^\s*([A-Z0-9]{8,16})\s+confirmed\b/i
+  );
+  if (confirmedPrefixMatch?.[1]) {
+    return confirmedPrefixMatch[1].toUpperCase();
+  }
+
+  // Labeled references: "Ref. ABC123...", "Reference: ABC123...", "Txn ID ABC123..."
+  const explicitRefMatch = message.match(
+    /\b(?:tx(?:n|id)?|trans(?:action)?(?:\s*id)?|ref(?:erence)?|code)\.?\s*[:#-]?\s*([A-Z0-9-]{6,24})\b/i
+  );
+  if (explicitRefMatch?.[1]) {
+    return explicitRefMatch[1].toUpperCase();
+  }
+
+  // Fallback: find an alphanumeric token that looks like a transaction code.
+  // Ignore numeric-only tokens (e.g. phone numbers) to avoid bad idempotency keys.
+  const candidateTokens = message.matchAll(/\b([A-Z0-9]{8,16})\b/gi);
+  for (const tokenMatch of candidateTokens) {
+    const token = tokenMatch[1]?.toUpperCase();
+    if (!token) continue;
+    const hasLetter = /[A-Z]/.test(token);
+    const hasDigit = /\d/.test(token);
+    if (hasLetter && hasDigit) {
+      return token;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -35,6 +69,7 @@ export function parseSMS(
   let amount = 0;
   let fee = 0;
   let date = "";
+  let transactionRef: string | null = null;
 
   // Normalize spacing
   const message = messageRaw.replace(/\s+/g, " ").trim();
@@ -48,6 +83,7 @@ export function parseSMS(
       amount: 0,
       date: "",
       fee: 0,
+      transactionRef: null,
     };
   }
 
@@ -90,7 +126,7 @@ export function parseSMS(
   // Extract amount - first currency amount in message is usually transaction amount.
   // Support both "KES 2000" and "2000 KES" formats.
   const amountRegex =
-    /(?:KES|Ksh|Kshs\.?)\s*([\d\s,]+\.\d{1,2}|[\d\s,]+)|([\d\s,]+\.\d{1,2}|[\d\s,]+)\s*(?:KES|Ksh|Kshs\.?)/gi;
+    /(?:KES|Ksh|Kshs\.?)\s*(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)|(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)\s*(?:KES|Ksh|Kshs\.?)/gi;
   const allMatches: number[] = [];
 
   for (const match of message.matchAll(amountRegex)) {
@@ -108,7 +144,7 @@ export function parseSMS(
 
   // Extract fee (look for phrases like "Transaction cost Ksh..." or "Charges 25.51 KES")
   const feeRegex =
-    /(Transaction cost|charges|Interest charged).*?(?:(?:KES|Ksh|Kshs\.?)\s*([\d\s,]+\.\d{1,2}|[\d\s,]+)|([\d\s,]+\.\d{1,2}|[\d\s,]+)\s*(?:KES|Ksh|Kshs\.?))/i;
+    /(Transaction cost|charges|Interest charged).*?(?:(?:KES|Ksh|Kshs\.?)\s*(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)|(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)\s*(?:KES|Ksh|Kshs\.?))/i;
   const feeMatch = message.match(feeRegex);
   const feeRaw = feeMatch?.[2] ?? feeMatch?.[3] ?? "";
   if (feeRaw) {
@@ -123,6 +159,8 @@ export function parseSMS(
   if (includeFeeInExpense && type === "expense") {
     amount += fee;
   }
+
+  transactionRef = extractTransactionRef(message);
 
   // Extract date
   if (timestamp != null) {
@@ -145,8 +183,14 @@ export function parseSMS(
     }
   }
 
-  const result = { message, type, amount, date, fee };
-  console.log("[SMS parse] result:", { type: result.type, amount: result.amount, date: result.date, fee: result.fee });
+  const result = { message, type, amount, date, fee, transactionRef };
+  console.log("[SMS parse] result:", {
+    type: result.type,
+    amount: result.amount,
+    date: result.date,
+    fee: result.fee,
+    transactionRef: result.transactionRef,
+  });
   return result;
 }
 
