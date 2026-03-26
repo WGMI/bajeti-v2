@@ -71,8 +71,7 @@ function TransactionFormFields({
   onAdded?: (transaction: Transaction) => void;
   onUpdated?: (transaction: Transaction) => void;
 }) {
-  const { categories, transactions, addTransaction, updateTransaction, getCategoryById } =
-    useBudget();
+  const { categories, transactions, addTransaction, updateTransaction, getCategoryById, refetch } = useBudget();
   const isEdit = !!editingTransaction;
   const typeLock = initialType ?? editingTransaction?.type ?? null;
 
@@ -95,9 +94,40 @@ function TransactionFormFields({
   const [smsParseFeedback, setSmsParseFeedback] = useState<string | null>(null);
   const [smsIdempotencyKey, setSmsIdempotencyKey] = useState<string | null>(null);
 
+  const [bulkImporting, setBulkImporting] = useState(false);
+  const [bulkImportSummary, setBulkImportSummary] = useState<{
+    created: number;
+    duplicates: number;
+    ignored: number;
+    failed: number;
+  } | null>(null);
+  const [bulkImportFailureLines, setBulkImportFailureLines] = useState<string[]>([]);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+
+  function splitSmsMessages(input: string): string[] {
+    const normalized = input.replace(/\r\n/g, "\n").trim();
+    if (!normalized) return [];
+
+    // Preferred format: one SMS per block, separated by blank lines.
+    const blankBlocks = normalized
+      .split(/\n\s*\n/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (blankBlocks.length > 1) return blankBlocks;
+
+    // Fallback: try splitting by "UC... confirmed" style blocks.
+    const confirmedBlocks = normalized.match(
+      /[A-Z0-9]{8,16}\s+confirmed\b[\s\S]*?(?=(?:[A-Z0-9]{8,16}\s+confirmed\b)|$)/gi
+    );
+    if (confirmedBlocks && confirmedBlocks.length > 1) {
+      return confirmedBlocks.map((s) => s.trim()).filter(Boolean);
+    }
+
+    return [normalized];
+  }
 
   const handleParseSms = () => {
     const trimmed = smsText.trim();
@@ -196,6 +226,88 @@ function TransactionFormFields({
     }
   };
 
+  type SmsBulkItemStatus = "created" | "duplicate" | "ignored" | "failed";
+  type SmsBulkItemResult = {
+    index: number;
+    status: SmsBulkItemStatus;
+    reason?: string;
+    transaction?: { id?: string } | null;
+  };
+  type SmsBulkResponse = {
+    summary?: {
+      created: number;
+      duplicates: number;
+      ignored: number;
+      failed: number;
+    };
+    results?: SmsBulkItemResult[];
+    error?: string;
+  };
+
+  const handleBulkImportSms = async () => {
+    if (bulkImporting) return;
+    const messages = splitSmsMessages(smsText);
+    if (messages.length === 0) return;
+
+    setBulkImporting(true);
+    setBulkImportSummary(null);
+    setBulkImportFailureLines([]);
+    setSubmitError(null);
+    setSubmitMessage(null);
+    setSmsParseFeedback(null);
+
+    try {
+      const res = await fetch("/api/sms/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          // Keep existing behavior: the single-SMS flow doesn't include fee-in-expense.
+          includeFeeInExpense: false,
+        }),
+      });
+
+      const data = (await res.json().catch(() => null)) as SmsBulkResponse | null;
+      if (!res.ok) {
+        const msg =
+          (data && typeof data.error === "string" && data.error) || "Bulk SMS import failed";
+        throw new Error(msg);
+      }
+
+      const summary = data?.summary;
+      const results = Array.isArray(data?.results) ? data.results : [];
+
+      if (summary) setBulkImportSummary(summary);
+
+      const failureLines = results
+        .filter((r) => r.status === "failed" || r.status === "ignored" || r.status === "duplicate")
+        .slice(0, 10)
+        .map((r) => {
+          const idx = typeof r.index === "number" ? r.index + 1 : "?";
+          if (r.status === "duplicate") {
+            const txId = r.transaction?.id ? String(r.transaction.id) : "";
+            return `#${idx}: duplicate${txId ? ` (tx ${txId})` : ""}`;
+          }
+          return `#${idx}: ${r.reason ?? "SMS ignored/failed"}`;
+        });
+
+      setBulkImportFailureLines(failureLines);
+
+      // Refresh the list to reflect newly created transactions.
+      await refetch();
+
+      // Clear the manual fields so "Add transaction" doesn't accidentally submit.
+      setAmount("");
+      setNotes("");
+      setSmsIdempotencyKey(null);
+      setSmsText("");
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Bulk import failed");
+    } finally {
+      setBulkImporting(false);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {!isEdit && (
@@ -218,11 +330,44 @@ function TransactionFormFields({
                 value={smsText}
                 onChange={(e) => setSmsText(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                For bulk import, separate multiple SMS messages with a blank line.
+              </p>
               <Button type="button" size="sm" onClick={handleParseSms}>
                 Use from SMS
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="ml-2"
+                onClick={handleBulkImportSms}
+                disabled={bulkImporting}
+              >
+                {bulkImporting ? "Importing…" : "Import all SMS"}
+              </Button>
               {smsParseFeedback && (
                 <p className="text-sm text-destructive">{smsParseFeedback}</p>
+              )}
+
+              {bulkImportSummary && (
+                <div className="space-y-1">
+                  <p className="text-sm">
+                    Imported: <span className="font-medium">{bulkImportSummary.created}</span>{" "}
+                    created, <span className="font-medium">{bulkImportSummary.duplicates}</span>{" "}
+                    duplicates, <span className="font-medium">{bulkImportSummary.ignored}</span>{" "}
+                    ignored, <span className="font-medium">{bulkImportSummary.failed}</span>{" "}
+                    failed.
+                  </p>
+                  {bulkImportFailureLines.length > 0 && (
+                    <div className="space-y-0.5">
+                      {bulkImportFailureLines.map((line, idx) => (
+                        <p key={idx} className="text-xs text-destructive">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
