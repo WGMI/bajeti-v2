@@ -2,6 +2,8 @@
 
 This app can receive money-related SMS messages from your mobile app (with Clerk auth), parse them, and create transactions automatically.
 
+For non-SMS mobile endpoints (summary + settings), see `docs/MOBILE-API.md`.
+
 ## Backend (this app)
 
 - **Endpoint:** `POST /api/sms`
