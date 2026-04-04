@@ -56,18 +56,20 @@ export function RecentTransactionsCard() {
   return (
     <>
       <Card className="min-w-0 shadow-sm">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 p-4 pb-4 sm:p-6 sm:pb-4">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <CardTitle className="text-base font-medium">Recent Transactions</CardTitle>
-            {transactions.length > 0 && (
-              <Link href="/dashboard/transactions">
-                <Button variant="ghost" size="sm" className="h-8 gap-1 text-muted-foreground hover:text-foreground">
-                  View all
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            )}
-          </div>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/50 p-4 pb-4 sm:p-6 sm:pb-4">
+          <CardTitle className="text-base font-medium">Recent Transactions</CardTitle>
+          {transactions.length > 0 ? (
+            <Link href="/dashboard/transactions" className="shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1 text-muted-foreground hover:text-foreground"
+              >
+                View all
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          ) : null}
         </CardHeader>
         <CardContent className="px-4 sm:px-6">
           {recent.length === 0 ? (

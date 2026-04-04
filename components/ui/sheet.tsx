@@ -69,14 +69,14 @@ const SheetContent = React.forwardRef<
   return (
     <>
       <div
-        className="fixed inset-0 z-50 bg-black/80"
+        className="fixed inset-0 z-[90] bg-black/80"
         onClick={() => ctx.setOpen(false)}
         aria-hidden
       />
       <div
         ref={ref}
         className={cn(
-          "fixed inset-y-0 z-50 flex w-3/4 max-w-sm flex-col gap-4 border-r bg-background p-6 shadow-lg transition-transform duration-300 ease-out sm:max-w-sm",
+          "fixed inset-y-0 z-[100] flex w-3/4 max-w-sm flex-col gap-4 border-r bg-background p-6 shadow-lg transition-transform duration-300 ease-out sm:max-w-sm",
           side === "left" ? "left-0" : "right-0",
           className
         )}
