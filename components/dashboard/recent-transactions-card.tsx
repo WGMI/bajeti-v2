@@ -4,8 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { TransactionRow } from "@/components/dashboard/transaction-row";
 import { Pencil, Trash2, ArrowRight, Loader2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
@@ -56,9 +55,9 @@ export function RecentTransactionsCard() {
 
   return (
     <>
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-4">
-          <div className="flex items-center gap-2">
+      <Card className="min-w-0 shadow-sm">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 p-4 pb-4 sm:p-6 sm:pb-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <CardTitle className="text-base font-medium">Recent Transactions</CardTitle>
             {transactions.length > 0 && (
               <Link href="/dashboard/transactions">
@@ -70,125 +69,86 @@ export function RecentTransactionsCard() {
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 sm:px-6">
           {recent.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
               No transactions yet. Use the + button to create one.
             </p>
           ) : (
-            <ul className="space-y-4">
+            <ul className="min-w-0 space-y-4">
               {recent.map((tx) => {
                 const category = getCategoryById(tx.categoryId);
                 const isIncome = tx.type === "income";
                 return (
-                  <li
+                  <TransactionRow
                     key={tx.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openDetail(tx)}
-                    onKeyDown={(e) => e.key === "Enter" && openDetail(tx)}
-                    className={cn(
-                      "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3 cursor-pointer hover:bg-muted/50 rounded-r transition-colors",
-                      isIncome ? "border-l-green-500" : "border-l-red-500"
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                        isIncome ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      <span className="text-sm font-medium">
-                        {category?.name?.slice(0, 1) ?? "?"}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{category?.name ?? "Unknown"}</p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {tx.notes || tx.date}
-                      </p>
-                    </div>
-                    <div className="text-right text-sm text-muted-foreground">
-                      {formatDateWithPreference(tx.date, dateFormat)}
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "w-fit text-xs",
-                        isIncome ? "bg-success/15 text-success border-success/30" : "bg-muted"
-                      )}
-                    >
-                      {tx.type === "income" ? "Income" : "Expense"}
-                    </Badge>
-                    <span
-                      className={cn(
-                        "font-semibold text-right",
-                        isIncome ? "text-success" : "text-foreground"
-                      )}
-                    >
-                      {formatCurrencyWithSign(tx.amount, currency)}
-                    </span>
-                    <div
-                      className="flex justify-end gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => openEdit(tx)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      {confirmingDeleteId === tx.id && !deletingId ? (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => setConfirmingDeleteId(null)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 min-w-[7rem] gap-2 text-destructive hover:text-destructive"
-                            onClick={async () => {
-                              setDeletingId(tx.id);
-                              try {
-                                await deleteTransaction(tx.id);
-                                setConfirmingDeleteId(null);
-                              } finally {
-                                setDeletingId(null);
-                              }
-                            }}
-                          >
-                            Are you sure?
-                          </Button>
-                        </>
-                      ) : deletingId === tx.id ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 min-w-[7rem] gap-2 text-destructive hover:text-destructive"
-                          disabled
-                        >
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Deleting…
-                        </Button>
-                      ) : (
+                    categoryInitial={category?.name?.slice(0, 1) ?? "?"}
+                    categoryName={category?.name ?? "Unknown"}
+                    subtitle={tx.notes || tx.date}
+                    dateLabel={formatDateWithPreference(tx.date, dateFormat)}
+                    isIncome={isIncome}
+                    amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
+                    onOpen={() => openDetail(tx)}
+                    actions={
+                      <>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => setConfirmingDeleteId(tx.id)}
+                          className="h-8 w-8 touch-manipulation"
+                          onClick={() => openEdit(tx)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Pencil className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
-                  </li>
+                        {confirmingDeleteId === tx.id && !deletingId ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 touch-manipulation"
+                              onClick={() => setConfirmingDeleteId(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 min-w-0 shrink gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                              onClick={async () => {
+                                setDeletingId(tx.id);
+                                try {
+                                  await deleteTransaction(tx.id);
+                                  setConfirmingDeleteId(null);
+                                } finally {
+                                  setDeletingId(null);
+                                }
+                              }}
+                            >
+                              Are you sure?
+                            </Button>
+                          </>
+                        ) : deletingId === tx.id ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 min-w-0 gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                            disabled
+                          >
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Deleting…
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive touch-manipulation"
+                            onClick={() => setConfirmingDeleteId(tx.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </>
+                    }
+                  />
                 );
               })}
             </ul>

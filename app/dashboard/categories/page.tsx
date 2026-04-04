@@ -112,14 +112,14 @@ function CategoriesPageContent() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
+            <ul className="min-w-0 space-y-2">
               {incomeCategories.map((cat) => (
                 <li
                   key={cat.id}
-                  className="flex items-center justify-between rounded-lg border px-3 py-2"
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2"
                 >
-                  <span className="font-medium">{cat.name}</span>
-                  <div className="flex gap-1">
+                  <span className="min-w-0 truncate font-medium">{cat.name}</span>
+                  <div className="flex shrink-0 gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -154,14 +154,14 @@ function CategoriesPageContent() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
+            <ul className="min-w-0 space-y-2">
               {expenseCategories.map((cat) => (
                 <li
                   key={cat.id}
-                  className="flex items-center justify-between rounded-lg border px-3 py-2"
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2"
                 >
-                  <span className="font-medium">{cat.name}</span>
-                  <div className="flex gap-1">
+                  <span className="min-w-0 truncate font-medium">{cat.name}</span>
+                  <div className="flex shrink-0 gap-1">
                     <Button
                       variant="ghost"
                       size="icon"

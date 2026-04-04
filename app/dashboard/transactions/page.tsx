@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { Pencil, Trash2, Loader2, Filter, Search } from "lucide-react";
+import { TransactionRow } from "@/components/dashboard/transaction-row";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
@@ -49,9 +48,7 @@ async function fetchTransactionsPage(
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as { error?: string }).error ?? "Failed to load");
   }
-  const data = await res.json();
-  console.log(data);
-  return data;
+  return res.json();
 }
 
 function TransactionsPageContent() {
@@ -209,18 +206,18 @@ function TransactionsPageContent() {
 
   return (
     <>
-      <div className="space-y-6">
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
+      <div className="min-w-0 space-y-6">
+        <Card className="min-w-0 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between p-4 pb-4 sm:p-6 sm:pb-4">
             <CardTitle className="text-base font-medium">All Transactions</CardTitle>
           </CardHeader>
-          <div className="px-6 pb-4 flex flex-wrap items-end gap-4 border-b border-border/50">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Filter className="h-4 w-4" />
+          <div className="flex flex-col gap-4 border-b border-border/50 px-4 pb-4 sm:flex-row sm:flex-wrap sm:items-end sm:px-6">
+            <div className="flex items-center gap-2 text-muted-foreground sm:shrink-0">
+              <Filter className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Filters</span>
             </div>
-            <div className="flex flex-wrap items-end gap-4 flex-1 min-w-0">
-              <div className="space-y-1.5 min-w-[180px]">
+            <div className="grid flex-1 grid-cols-1 gap-4 min-w-0 sm:flex sm:flex-wrap sm:items-end">
+              <div className="space-y-1.5 sm:min-w-[180px] sm:flex-1">
                 <Label className="text-xs text-muted-foreground">Search notes & category</Label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -230,14 +227,14 @@ function TransactionsPageContent() {
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && applySearch()}
                     onBlur={applySearch}
-                    className="h-9 pl-8 pr-4"
+                    className="h-9 w-full pl-8 pr-4"
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Type</Label>
                 <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
-                  <SelectTrigger className="w-[130px] h-9">
+                  <SelectTrigger className="h-9 w-full sm:w-[130px]">
                     <span>{typeFilter === "all" ? "All" : typeFilter === "income" ? "Income" : "Expense"}</span>
                   </SelectTrigger>
                   <SelectContent>
@@ -247,154 +244,113 @@ function TransactionsPageContent() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">From date</Label>
-                <Input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="h-9 w-[140px]"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">To date</Label>
-                <Input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="h-9 w-[140px]"
-                />
+              <div className="grid grid-cols-2 gap-4 sm:flex sm:items-end">
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-xs text-muted-foreground">From date</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="h-9 w-full min-w-0 sm:w-[140px]"
+                  />
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-xs text-muted-foreground">To date</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="h-9 w-full min-w-0 sm:w-[140px]"
+                  />
+                </div>
               </div>
               {hasActiveFilters && (
-                <Button variant="ghost" size="sm" className="h-9" onClick={clearFilters}>
+                <Button variant="ghost" size="sm" className="h-9 w-full sm:w-auto" onClick={clearFilters}>
                   Clear filters
                 </Button>
               )}
             </div>
           </div>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6">
             {list.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">
                 No transactions yet. Use the + button to create one.
               </p>
             ) : (
-              <ul className="space-y-4">
+              <ul className="min-w-0 space-y-4">
                 {list.map((tx) => {
                   const category = getCategoryById(tx.categoryId);
                   const isIncome = tx.type === "income";
                   return (
-                    <li
+                    <TransactionRow
                       key={tx.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openDetail(tx)}
-                      onKeyDown={(e) => e.key === "Enter" && openDetail(tx)}
-                      className={cn(
-                        "grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_5.5rem_6.5rem_auto] gap-x-4 items-center border-b border-border/50 border-l-[3px] pb-4 last:border-b-0 last:pb-0 pl-3 cursor-pointer hover:bg-muted/50 rounded-r transition-colors",
-                        isIncome ? "border-l-green-500" : "border-l-red-500"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                          isIncome
-                            ? "bg-success/15 text-success"
-                            : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        <span className="text-sm font-medium">
-                          {category?.name?.slice(0, 1) ?? "?"}
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{category?.name ?? "Unknown"}</p>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {tx.notes || tx.date}
-                        </p>
-                      </div>
-                      <div className="text-right text-sm text-muted-foreground">
-                        {formatDateWithPreference(tx.date, dateFormat)}
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "w-fit text-xs",
-                          isIncome
-                            ? "bg-success/15 text-success border-success/30"
-                            : "bg-muted"
-                        )}
-                      >
-                        {tx.type === "income" ? "Income" : "Expense"}
-                      </Badge>
-                      <span
-                        className={cn(
-                          "font-semibold text-right",
-                          isIncome ? "text-success" : "text-foreground"
-                        )}
-                      >
-                        {formatCurrencyWithSign(tx.amount, currency)}
-                      </span>
-                      <div
-                        className="flex justify-end gap-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => openEdit(tx)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {confirmingDeleteId === tx.id && !deletingId ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => setConfirmingDeleteId(null)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 min-w-[7rem] gap-2 text-destructive hover:text-destructive"
-                              onClick={async () => {
-                                setDeletingId(tx.id);
-                                try {
-                                  await handleDelete(tx.id);
-                                  setConfirmingDeleteId(null);
-                                } finally {
-                                  setDeletingId(null);
-                                }
-                              }}
-                            >
-                              Are you sure?
-                            </Button>
-                          </>
-                        ) : deletingId === tx.id ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 min-w-[7rem] gap-2 text-destructive hover:text-destructive"
-                            disabled
-                          >
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Deleting…
-                          </Button>
-                        ) : (
+                      categoryInitial={category?.name?.slice(0, 1) ?? "?"}
+                      categoryName={category?.name ?? "Unknown"}
+                      subtitle={tx.notes || tx.date}
+                      dateLabel={formatDateWithPreference(tx.date, dateFormat)}
+                      isIncome={isIncome}
+                      amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
+                      onOpen={() => openDetail(tx)}
+                      actions={
+                        <>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => setConfirmingDeleteId(tx.id)}
+                            className="h-8 w-8 touch-manipulation"
+                            onClick={() => openEdit(tx)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
-                    </li>
+                          {confirmingDeleteId === tx.id && !deletingId ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 touch-manipulation"
+                                onClick={() => setConfirmingDeleteId(null)}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 min-w-0 shrink gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                                onClick={async () => {
+                                  setDeletingId(tx.id);
+                                  try {
+                                    await handleDelete(tx.id);
+                                    setConfirmingDeleteId(null);
+                                  } finally {
+                                    setDeletingId(null);
+                                  }
+                                }}
+                              >
+                                Are you sure?
+                              </Button>
+                            </>
+                          ) : deletingId === tx.id ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 min-w-0 gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                              disabled
+                            >
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Deleting…
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive touch-manipulation"
+                              onClick={() => setConfirmingDeleteId(tx.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </>
+                      }
+                    />
                   );
                 })}
               </ul>

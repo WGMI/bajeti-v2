@@ -17,6 +17,7 @@ import {
   getCurrentMonthKey,
 } from "@/lib/budget-utils";
 import type { Transaction } from "@/lib/budget-types";
+import { cn } from "@/lib/utils";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { LayoutGrid, List } from "lucide-react";
 import { TransactionDetailDialog } from "@/components/dashboard/transaction-detail-dialog";
@@ -272,7 +273,7 @@ export default function MonthlyPage() {
                             <p className="text-sm font-medium text-muted-foreground mb-2">
                               Transactions ({list.length})
                             </p>
-                            <ul className="space-y-2">
+                            <ul className="min-w-0 space-y-2">
                               {list.slice(0, 3).map((tx) => {
                                 const cat = getCategoryById(tx.categoryId);
                                 const isIncome = tx.type === "income";
@@ -281,7 +282,7 @@ export default function MonthlyPage() {
                                     key={tx.id}
                                     role="button"
                                     tabIndex={0}
-                                    className="flex items-center justify-between text-sm border-b border-border/50 pb-2 last:border-0 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 transition-colors"
+                                    className="flex min-w-0 items-center justify-between gap-2 text-sm border-b border-border/50 pb-2 last:border-0 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 transition-colors"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -297,16 +298,17 @@ export default function MonthlyPage() {
                                       }
                                     }}
                                   >
-                                    <span className="text-muted-foreground">
+                                    <span className="shrink-0 text-muted-foreground tabular-nums">
                                       {formatDateWithPreference(tx.date, dateFormat)}
                                     </span>
-                                    <span className="truncate max-w-[140px]">
+                                    <span className="min-w-0 flex-1 truncate">
                                       {cat?.name ?? "—"} {tx.notes ? `· ${tx.notes}` : ""}
                                     </span>
                                     <span
-                                      className={
-                                        isIncome ? "text-success font-medium" : ""
-                                      }
+                                      className={cn(
+                                        "min-w-0 max-w-[45%] shrink text-right tabular-nums [overflow-wrap:anywhere]",
+                                        isIncome ? "font-medium text-success" : ""
+                                      )}
                                     >
                                       {isIncome ? "+" : "−"}{" "}
                                       {formatCurrency(Math.abs(tx.amount), currency)}

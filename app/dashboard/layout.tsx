@@ -14,11 +14,11 @@ export default function DashboardLayout({
   return (
     <SettingsProvider>
       <BudgetProvider>
-      <div className="flex min-h-screen flex-col md:flex-row">
+      <div className="flex min-h-screen min-w-0 flex-col md:flex-row">
         <DashboardSidebar />
-        <div className="flex flex-1 flex-col min-h-screen">
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <DashboardHeader />
-          <main className="flex-1 p-4 md:p-6 bg-muted/20 overflow-auto">
+          <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-muted/20 p-4 pb-[max(1rem,calc(5.5rem+env(safe-area-inset-bottom,0px)))] md:p-6 md:pb-6">
             {children}
           </main>
         </div>

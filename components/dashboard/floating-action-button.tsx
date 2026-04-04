@@ -22,7 +22,7 @@ export function FloatingActionButton() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 md:bottom-8 md:right-8">
+    <div className="fixed z-50 bottom-[max(1.5rem,calc(0.75rem+env(safe-area-inset-bottom,0px)))] right-[max(1.5rem,calc(0.75rem+env(safe-area-inset-right,0px)))] md:bottom-8 md:right-8">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
