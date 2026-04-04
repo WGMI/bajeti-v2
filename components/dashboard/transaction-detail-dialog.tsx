@@ -156,6 +156,7 @@ export function TransactionDetailDialog({
                 <Button
                   type="button"
                   variant="destructive"
+                  className="text-white"
                   size="sm"
                   onClick={handleDelete}
                   disabled={deleting}

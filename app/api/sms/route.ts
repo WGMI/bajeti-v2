@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { parseSMS } from "@/lib/sms-parser";
+import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
+import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 
 type CategoryRow = { id: string; name: string; type: string };
 type TransactionRow = {
@@ -55,9 +57,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const transactionDateSource = await getSmsTransactionDateSource(userId);
     const parsed = parseSMS(messageRaw.trim(), {
       timestamp: typeof timestamp === "number" ? timestamp : null,
       includeFeeInExpense: Boolean(includeFeeInExpense),
+      transactionDateSource,
     });
 
     // Skip creating a transaction for invalid parse results and inform client why.
@@ -149,7 +153,7 @@ export async function POST(request: Request) {
       rawMessageHash,
     });
     const existingRows = await sql`
-      SELECT id, amount, category_id, date, notes, type
+      SELECT id, amount, category_id, date::text AS date, notes, type
       FROM transactions
       WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
       LIMIT 1
@@ -177,7 +181,7 @@ export async function POST(request: Request) {
           id: existing.id,
           amount: Number(existing.amount),
           categoryId: existing.category_id,
-          date: existing.date,
+          date: normalizeTransactionDateFromDb(existing.date),
           notes: existing.notes ?? "",
           type: existing.type as "income" | "expense",
         },
@@ -206,7 +210,7 @@ export async function POST(request: Request) {
         ${rawMessageHash}
       )
       ON CONFLICT DO NOTHING
-      RETURNING id, amount, category_id, date, notes, type
+      RETURNING id, amount, category_id, date::text AS date, notes, type
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {
@@ -215,7 +219,7 @@ export async function POST(request: Request) {
         smsIdempotencyKey,
       });
       const existingRowsAfterConflict = await sql`
-        SELECT id, amount, category_id, date, notes, type
+        SELECT id, amount, category_id, date::text AS date, notes, type
         FROM transactions
         WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
         LIMIT 1
@@ -252,7 +256,7 @@ export async function POST(request: Request) {
           id: existingAfterConflict.id,
           amount: Number(existingAfterConflict.amount),
           categoryId: existingAfterConflict.category_id,
-          date: existingAfterConflict.date,
+          date: normalizeTransactionDateFromDb(existingAfterConflict.date),
           notes: existingAfterConflict.notes ?? "",
           type: existingAfterConflict.type as "income" | "expense",
         },
@@ -279,7 +283,7 @@ export async function POST(request: Request) {
         id: row.id,
         amount: Number(row.amount),
         categoryId: row.category_id,
-        date: row.date,
+        date: normalizeTransactionDateFromDb(row.date),
         notes: row.notes ?? "",
         type: row.type as "income" | "expense",
       },

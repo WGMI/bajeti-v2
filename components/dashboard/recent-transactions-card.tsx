@@ -10,7 +10,10 @@ import { Pencil, Trash2, ArrowRight, Loader2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
-import { formatDateWithPreference } from "@/lib/format-date";
+import {
+  compareIsoDateStringsDesc,
+  formatDateWithPreference,
+} from "@/lib/format-date";
 import type { Transaction } from "@/lib/budget-types";
 import { TransactionFormDialog } from "./transaction-form-dialog";
 import { TransactionDetailDialog } from "./transaction-detail-dialog";
@@ -25,8 +28,8 @@ export function RecentTransactionsCard() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const sorted = [...transactions].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  const sorted = [...transactions].sort((a, b) =>
+    compareIsoDateStringsDesc(a.date, b.date)
   );
   const recent = sorted.slice(0, 5);
 

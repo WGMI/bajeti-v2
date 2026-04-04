@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { parseSMS } from "@/lib/sms-parser";
+import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import type { CategoryType } from "@/lib/budget-types";
+import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 
 type CategoryRow = { id: string; name: string; type: string };
 type TransactionRow = {
@@ -22,7 +24,7 @@ function rowToTransaction(row: TransactionRow) {
     id: row.id,
     amount: Number(row.amount),
     categoryId: row.category_id,
-    date: row.date,
+    date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as "income" | "expense",
   };
@@ -132,6 +134,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid payload: all messages must be strings" }, { status: 400 });
     }
 
+    const transactionDateSource = await getSmsTransactionDateSource(userId);
+
     // Ensure user has categories, so each parsed SMS can map to its income/expense category.
     let categoryRows = await sql`
       SELECT id, name, type
@@ -167,7 +171,11 @@ export async function POST(request: Request) {
           transactionCreated: false,
           reason: "Empty SMS message",
           parsed: extractParsedForResponse(
-            parseSMS("", { timestamp: typeof timestamp === "number" ? timestamp : null, includeFeeInExpense: Boolean(includeFeeInExpense) })
+            parseSMS("", {
+              timestamp: typeof timestamp === "number" ? timestamp : null,
+              includeFeeInExpense: Boolean(includeFeeInExpense),
+              transactionDateSource,
+            })
           ),
         });
         continue;
@@ -177,6 +185,7 @@ export async function POST(request: Request) {
         const parsed = parseSMS(message, {
           timestamp: typeof timestamp === "number" ? timestamp : null,
           includeFeeInExpense: Boolean(includeFeeInExpense),
+          transactionDateSource,
         });
 
         const parsedForResponse = extractParsedForResponse(parsed);
@@ -228,7 +237,7 @@ export async function POST(request: Request) {
         );
 
         const existingRows = await sql`
-          SELECT id, amount, category_id, date, notes, type
+          SELECT id, amount, category_id, date::text AS date, notes, type
           FROM transactions
           WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
           LIMIT 1
@@ -268,14 +277,14 @@ export async function POST(request: Request) {
             ${rawMessageHash}
           )
           ON CONFLICT DO NOTHING
-          RETURNING id, amount, category_id, date, notes, type
+          RETURNING id, amount, category_id, date::text AS date, notes, type
         `;
 
         const row = rows[0] as TransactionRow | undefined;
         if (!row) {
           // Highly likely a unique-index conflict: treat as duplicate.
           const existingRowsAfterConflict = await sql`
-            SELECT id, amount, category_id, date, notes, type
+            SELECT id, amount, category_id, date::text AS date, notes, type
             FROM transactions
             WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
             LIMIT 1

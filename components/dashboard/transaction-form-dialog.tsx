@@ -21,6 +21,7 @@ import { useBudget } from "@/lib/budget-store";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
 import { parseSMS } from "@/lib/sms-parser";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
+import { useSettings } from "@/lib/settings-store";
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -72,6 +73,7 @@ function TransactionFormFields({
   onUpdated?: (transaction: Transaction) => void;
 }) {
   const { categories, transactions, addTransaction, updateTransaction, getCategoryById, refetch } = useBudget();
+  const { smsTransactionDateSource } = useSettings();
   const isEdit = !!editingTransaction;
   const typeLock = initialType ?? editingTransaction?.type ?? null;
 
@@ -134,7 +136,9 @@ function TransactionFormFields({
     if (!trimmed) return;
     setSmsParseFeedback(null);
     console.log("[SMS dialog] typeLock (user's choice):", typeLock);
-    const result = parseSMS(trimmed);
+    const result = parseSMS(trimmed, {
+      transactionDateSource: smsTransactionDateSource,
+    });
     console.log("[SMS dialog] parsed result.type:", result.type);
 
     if (result.type === "neither") {

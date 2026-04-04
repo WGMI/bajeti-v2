@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrency } from "@/lib/format-currency";
-import { formatDateWithPreference } from "@/lib/format-date";
+import {
+  compareIsoDateStringsDesc,
+  formatDateWithPreference,
+} from "@/lib/format-date";
 import {
   getMonthTotals,
   getMonthKey,
@@ -80,9 +83,7 @@ export default function MonthlyPage() {
       map[key].push(tx);
     }
     for (const key of Object.keys(map)) {
-      map[key].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
+      map[key].sort((a, b) => compareIsoDateStringsDesc(a.date, b.date));
     }
     return map;
   }, [transactions]);

@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import type { SmsTransactionDateSource } from "./sms-parser";
 
 const STORAGE_KEY = "bajeti-settings";
 
@@ -21,6 +22,8 @@ export type CurrencyCode =
   | "ZAR"
   | "INR";
 
+export type { SmsTransactionDateSource };
+
 export type DateFormat = "short" | "medium" | "long";
 export type FirstDayOfWeek = "sunday" | "monday";
 
@@ -28,12 +31,14 @@ export interface AppSettings {
   currency: CurrencyCode;
   dateFormat: DateFormat;
   firstDayOfWeek: FirstDayOfWeek;
+  smsTransactionDateSource: SmsTransactionDateSource;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   currency: "USD",
   dateFormat: "medium",
   firstDayOfWeek: "monday",
+  smsTransactionDateSource: "received_at",
 };
 
 function loadFromCache(): AppSettings {
@@ -46,6 +51,8 @@ function loadFromCache(): AppSettings {
       currency: (parsed.currency ?? DEFAULT_SETTINGS.currency) as CurrencyCode,
       dateFormat: (parsed.dateFormat ?? DEFAULT_SETTINGS.dateFormat) as DateFormat,
       firstDayOfWeek: (parsed.firstDayOfWeek ?? DEFAULT_SETTINGS.firstDayOfWeek) as FirstDayOfWeek,
+      smsTransactionDateSource: (parsed.smsTransactionDateSource ??
+        DEFAULT_SETTINGS.smsTransactionDateSource) as SmsTransactionDateSource,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -70,6 +77,8 @@ async function fetchSettings(): Promise<AppSettings | null> {
       currency: data.currency ?? DEFAULT_SETTINGS.currency,
       dateFormat: data.dateFormat ?? DEFAULT_SETTINGS.dateFormat,
       firstDayOfWeek: data.firstDayOfWeek ?? DEFAULT_SETTINGS.firstDayOfWeek,
+      smsTransactionDateSource:
+        data.smsTransactionDateSource ?? DEFAULT_SETTINGS.smsTransactionDateSource,
     };
   } catch {
     return null;
@@ -92,6 +101,7 @@ interface SettingsContextValue extends AppSettings {
   setCurrency: (currency: CurrencyCode) => void;
   setDateFormat: (format: DateFormat) => void;
   setFirstDayOfWeek: (day: FirstDayOfWeek) => void;
+  setSmsTransactionDateSource: (source: SmsTransactionDateSource) => void;
   updateSettings: (patch: Partial<AppSettings>) => void;
 }
 
@@ -139,6 +149,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const setSmsTransactionDateSource = useCallback(
+    (smsTransactionDateSource: SmsTransactionDateSource) => {
+      setSettings((prev) => {
+        const next = { ...prev, smsTransactionDateSource };
+        saveToCache(next);
+        persistSettings(next);
+        return next;
+      });
+    },
+    []
+  );
+
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
@@ -154,6 +176,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCurrency,
       setDateFormat,
       setFirstDayOfWeek,
+      setSmsTransactionDateSource,
       updateSettings,
     }),
     [
@@ -161,6 +184,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCurrency,
       setDateFormat,
       setFirstDayOfWeek,
+      setSmsTransactionDateSource,
       updateSettings,
     ]
   );

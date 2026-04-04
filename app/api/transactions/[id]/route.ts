@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 
 type TransactionRow = {
   id: string;
@@ -16,7 +17,7 @@ function rowToTransaction(row: TransactionRow) {
     id: row.id,
     amount: Number(row.amount),
     categoryId: row.category_id,
-    date: row.date,
+    date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as "income" | "expense",
   };
@@ -51,7 +52,7 @@ export async function PATCH(
       UPDATE transactions
       SET amount = ${numAmount}, category_id = ${categoryId}, date = ${date}, notes = ${notes ?? ""}, type = (${type})::category_type
       WHERE id = ${id} AND user_id = ${userId}
-      RETURNING id, amount, category_id, date, notes, type
+      RETURNING id, amount, category_id, date::text AS date, notes, type
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {

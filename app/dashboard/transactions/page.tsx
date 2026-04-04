@@ -49,7 +49,9 @@ async function fetchTransactionsPage(
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as { error?: string }).error ?? "Failed to load");
   }
-  return res.json();
+  const data = await res.json();
+  console.log(data);
+  return data;
 }
 
 function TransactionsPageContent() {

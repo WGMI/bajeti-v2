@@ -1,5 +1,8 @@
 export type SmsType = "income" | "expense" | "neither";
 
+/** Where the transaction `date` should come from when both SMS text and device time exist. */
+export type SmsTransactionDateSource = "message" | "received_at";
+
 export interface SmsParseResult {
   message: string;
   type: SmsType;
@@ -12,6 +15,12 @@ export interface SmsParseResult {
 export interface ParseSmsOptions {
   timestamp?: number | null;
   includeFeeInExpense?: boolean;
+  /**
+   * `message` — prefer a calendar date parsed from the SMS body (M-PESA-style), then device time.
+   * `received_at` — prefer `timestamp` when provided (e.g. mobile), then body.
+   * Default matches historical API behavior: `received_at`.
+   */
+  transactionDateSource?: SmsTransactionDateSource;
 }
 
 function formatDateFromTimestamp(timestamp: number): string {
@@ -20,6 +29,150 @@ function formatDateFromTimestamp(timestamp: number): string {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+/** DD/MM interpretation (slash or hyphen), common in Kenya M-PESA SMS. */
+function calendarDayMonthYear(
+  dayStr: string,
+  monthStr: string,
+  yearStr: string
+): string | null {
+  const day = parseInt(dayStr, 10);
+  const month = parseInt(monthStr, 10);
+  const fullYear =
+    yearStr.length === 2 ? 2000 + parseInt(yearStr, 10) : parseInt(yearStr, 10);
+  if (
+    Number.isNaN(day) ||
+    Number.isNaN(month) ||
+    Number.isNaN(fullYear) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+  const d = new Date(fullYear, month - 1, day);
+  if (
+    d.getFullYear() !== fullYear ||
+    d.getMonth() !== month - 1 ||
+    d.getDate() !== day
+  ) {
+    return null;
+  }
+  return `${fullYear}-${String(month).padStart(2, "0")}-${String(day).padStart(
+    2,
+    "0"
+  )}`;
+}
+
+function monthNameToNum(name: string): number | null {
+  return MONTH_NAMES[name.toLowerCase()] ?? null;
+}
+
+/**
+ * Best-effort calendar date from SMS body (ISO, DD/MM/YY, "on 4/4/26", "4 Apr 2026", etc.).
+ */
+export function extractDateFromSmsBody(message: string): string | null {
+  // ISO YYYY-MM-DD
+  const iso = message.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) {
+    const y = parseInt(iso[1], 10);
+    const m = parseInt(iso[2], 10);
+    const day = parseInt(iso[3], 10);
+    const d = new Date(y, m - 1, day);
+    if (
+      d.getFullYear() === y &&
+      d.getMonth() === m - 1 &&
+      d.getDate() === day
+    ) {
+      return `${y}-${iso[2]}-${iso[3]}`;
+    }
+  }
+
+  // Typical M-PESA: "on 4/4/26 at 10:30 AM"
+  const onDate = message.match(
+    /\bon\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/i
+  );
+  if (onDate) {
+    const cal = calendarDayMonthYear(onDate[1], onDate[2], onDate[3]);
+    if (cal) return cal;
+  }
+
+  // DD/MM/YY or DD-MM-YY anywhere (first valid hit)
+  const dmyPattern = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/g;
+  for (const m of message.matchAll(dmyPattern)) {
+    const cal = calendarDayMonthYear(m[1], m[2], m[3]);
+    if (cal) return cal;
+  }
+
+  // "4 Apr 2026" / "04 APR 26"
+  const dMonY = message.match(
+    /\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})\b/
+  );
+  if (dMonY) {
+    const monthNum = monthNameToNum(dMonY[2]);
+    if (monthNum) {
+      const yearStr = dMonY[3];
+      const y =
+        yearStr.length === 2 ? 2000 + parseInt(yearStr, 10) : parseInt(yearStr, 10);
+      const day = parseInt(dMonY[1], 10);
+      const cal = calendarDayMonthYear(String(day), String(monthNum), String(y));
+      if (cal) return cal;
+    }
+  }
+
+  // "Apr 4, 2026"
+  const monDY = message.match(
+    /\b([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})\b/
+  );
+  if (monDY) {
+    const monthNum = monthNameToNum(monDY[1]);
+    if (monthNum) {
+      const cal = calendarDayMonthYear(monDY[2], String(monthNum), monDY[3]);
+      if (cal) return cal;
+    }
+  }
+
+  return null;
+}
+
+function resolveTransactionDate(
+  bodyDate: string | null,
+  deviceDate: string | null,
+  source: SmsTransactionDateSource
+): string {
+  if (source === "message") {
+    return bodyDate ?? deviceDate ?? "";
+  }
+  return deviceDate ?? bodyDate ?? "";
 }
 
 function extractTransactionRef(message: string): string | null {
@@ -63,7 +216,11 @@ export function parseSMS(
   messageRaw: string,
   options: ParseSmsOptions = {}
 ): SmsParseResult {
-  const { timestamp = null, includeFeeInExpense = false } = options;
+  const {
+    timestamp = null,
+    includeFeeInExpense = false,
+    transactionDateSource = "received_at",
+  } = options;
 
   let type: SmsType = "neither";
   let amount = 0;
@@ -162,26 +319,12 @@ export function parseSMS(
 
   transactionRef = extractTransactionRef(message);
 
-  // Extract date
-  if (timestamp != null) {
-    date = formatDateFromTimestamp(timestamp);
-  } else {
-    const dateRegex =
-      /\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2}/;
-    const match = message.match(dateRegex);
-    if (match && match[0]) {
-      const dateString = match[0];
-      if (dateString.includes("/")) {
-        const [day, month, year] = dateString.split("/");
-        const fullYear = year.length === 2 ? `20${year}` : year;
-        const mm = month.padStart(2, "0");
-        const dd = day.padStart(2, "0");
-        date = `${fullYear}-${mm}-${dd}`;
-      } else {
-        date = dateString;
-      }
-    }
-  }
+  const bodyDate = message.trim() ? extractDateFromSmsBody(message) : null;
+  const deviceDate =
+    timestamp != null && Number.isFinite(timestamp)
+      ? formatDateFromTimestamp(timestamp)
+      : null;
+  date = resolveTransactionDate(bodyDate, deviceDate, transactionDateSource);
 
   const result = { message, type, amount, date, fee, transactionRef };
   console.log("[SMS parse] result:", {

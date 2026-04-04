@@ -13,6 +13,7 @@ import type {
   CurrencyCode,
   DateFormat,
   FirstDayOfWeek,
+  SmsTransactionDateSource,
 } from "@/lib/settings-store";
 import { Settings as SettingsIcon } from "lucide-react";
 
@@ -21,9 +22,11 @@ export default function SettingsPage() {
     currency,
     dateFormat,
     firstDayOfWeek,
+    smsTransactionDateSource,
     setCurrency,
     setDateFormat,
     setFirstDayOfWeek,
+    setSmsTransactionDateSource,
   } = useSettings();
 
   return (
@@ -108,6 +111,46 @@ export default function SettingsPage() {
             </Select>
             <p className="text-xs text-muted-foreground">
               Used for weekly summaries and any calendar-style views.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base font-medium">SMS & imports</CardTitle>
+          <p className="text-sm text-muted-foreground font-normal">
+            When you paste an SMS or sync from the mobile app, choose which date
+            to use for the transaction.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="smsTxDate">Transaction date from SMS</Label>
+            <Select
+              value={smsTransactionDateSource}
+              onValueChange={(v) =>
+                setSmsTransactionDateSource(v as SmsTransactionDateSource)
+              }
+            >
+              <SelectTrigger id="smsTxDate" className="max-w-md">
+                {smsTransactionDateSource === "message"
+                  ? "Date in the message (provider date)"
+                  : "When the SMS was received (device)"}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="message">
+                  Date in the message (provider date)
+                </SelectItem>
+                <SelectItem value="received_at">
+                  When the SMS was received (device)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              The parser reads dates in the text (for example M-PESA &quot;on
+              4/4/26&quot;). If you choose device time, that value wins when the
+              app sends a timestamp; otherwise the message date is used.
             </p>
           </div>
         </CardContent>

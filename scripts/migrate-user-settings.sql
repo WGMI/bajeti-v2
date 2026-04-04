@@ -5,5 +5,6 @@ CREATE TABLE IF NOT EXISTS user_settings (
   user_id text PRIMARY KEY,
   currency text NOT NULL DEFAULT 'USD',
   date_format text NOT NULL DEFAULT 'medium',
-  first_day_of_week text NOT NULL DEFAULT 'monday'
+  first_day_of_week text NOT NULL DEFAULT 'monday',
+  sms_transaction_date_source text NOT NULL DEFAULT 'received_at'
 );

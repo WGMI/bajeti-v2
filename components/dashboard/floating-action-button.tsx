@@ -27,7 +27,7 @@ export function FloatingActionButton() {
         <DropdownMenuTrigger asChild>
           <Button
             size="lg"
-            className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow"
+            className="h-14 w-14 rounded-full border border-primary/20 bg-primary/35 text-primary-foreground shadow-lg backdrop-blur-md transition-[background-color,box-shadow,border-color,opacity] hover:border-primary/30 hover:bg-primary hover:shadow-xl active:bg-primary data-[state=open]:border-primary data-[state=open]:bg-primary data-[state=open]:shadow-xl focus-visible:bg-primary"
             aria-label="Add"
           >
             <Plus className="h-6 w-6" />
