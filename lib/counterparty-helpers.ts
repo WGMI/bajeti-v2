@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
-import type { CategoryType } from "@/lib/budget-types";
-import { parseSMS } from "@/lib/sms-parser";
+
+export { effectiveCounterpartyFromTransaction } from "./effective-counterparty-from-transaction";
 
 type CategoryRow = { id: string; name: string; type: string };
 
@@ -25,24 +25,4 @@ export async function resolveCategoryForSmsIngestion(
   const categoryId = (ruleRows[0] as { category_id: string } | undefined)?.category_id;
   if (!categoryId) return fallback;
   return categoryRows.find((c) => c.id === categoryId) ?? fallback;
-}
-
-export function effectiveCounterpartyFromTransaction(
-  notes: string,
-  type: CategoryType,
-  smsCounterpartyKey: string | null | undefined,
-  smsCounterparty: string | null | undefined
-): { key: string; label: string } | null {
-  if (smsCounterpartyKey) {
-    const label =
-      smsCounterparty?.trim() ||
-      smsCounterpartyKey.replace(/\b\w/g, (c) => c.toUpperCase());
-    return { key: smsCounterpartyKey, label };
-  }
-  const parsed = parseSMS(notes);
-  if (parsed.type !== type || !parsed.counterpartyKey) return null;
-  return {
-    key: parsed.counterpartyKey,
-    label: parsed.counterparty ?? parsed.counterpartyKey,
-  };
 }

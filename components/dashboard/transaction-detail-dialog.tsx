@@ -10,13 +10,14 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Trash2, Loader2 } from "lucide-react";
+import { Pencil, Trash2, Loader2, Tags } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { Transaction } from "@/lib/budget-types";
 import { cn } from "@/lib/utils";
+import { CreateCounterpartyRuleDialog } from "@/components/dashboard/create-counterparty-rule-dialog";
 
 export interface TransactionDetailDialogProps {
   open: boolean;
@@ -39,13 +40,21 @@ export function TransactionDetailDialog({
   const { currency, dateFormat } = useSettings();
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
 
   const category = transaction ? getCategoryById(transaction.categoryId) : null;
   const isIncome = transaction?.type === "income";
 
   const handleClose = () => {
+    setRuleDialogOpen(false);
     onOpenChange(false);
     setConfirmDelete(false);
+  };
+
+  const handleDetailOpenChange = (next: boolean) => {
+    if (!next) setRuleDialogOpen(false);
+    onOpenChange(next);
+    if (!next) setConfirmDelete(false);
   };
 
   const handleEdit = () => {
@@ -75,7 +84,8 @@ export function TransactionDetailDialog({
   if (!transaction) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog open={open} onOpenChange={handleDetailOpenChange}>
       <DialogContent
         className={cn(
           "sm:max-w-md",
@@ -140,7 +150,18 @@ export function TransactionDetailDialog({
             </div>
           )}
         </div>
-        <DialogFooter className="flex-row gap-2 sm:justify-between">
+        <DialogFooter className="flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto border-dashed gap-2"
+            onClick={() => setRuleDialogOpen(true)}
+          >
+            <Tags className="h-4 w-4 shrink-0" />
+            Create SMS rule
+          </Button>
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
           <div className="flex gap-2">
             {confirmDelete ? (
               <>
@@ -186,8 +207,15 @@ export function TransactionDetailDialog({
             <Pencil className="h-4 w-4" />
             Update
           </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <CreateCounterpartyRuleDialog
+      transaction={transaction}
+      open={ruleDialogOpen}
+      onOpenChange={setRuleDialogOpen}
+    />
+    </>
   );
 }

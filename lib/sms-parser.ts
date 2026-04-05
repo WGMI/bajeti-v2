@@ -231,6 +231,12 @@ export function extractSmsCounterpartyLabel(
     return null;
   }
 
+  // "… credited to 2547… JOHN DOE. Ref. …" (credit to wallet / account alerts)
+  const credited = m.match(
+    /\bcredited\s+to\s+(?:\+?254\d{9}\s+|0\d{9}\s+)?(.+?)(?=\.\s*Ref(?:\.|\s)|$)/i
+  );
+  if (credited?.[1]) return trimCounterpartyLabel(credited[1]);
+
   const from = m.match(new RegExp(`\\bfrom\\s+(.+?)(${ON_DATE_CHUNK})`, "i"));
   if (from?.[1]) return trimCounterpartyLabel(from[1]);
   return null;
@@ -309,7 +315,7 @@ export function parseSMS(
 
   // Contextual keyword rules
   const smsRules: Record<string, string[]> = {
-    income: ["received"],
+    income: ["received", "credited to"],
     expense: [
       "drawn from",
       "sent to",
@@ -321,7 +327,6 @@ export function parseSMS(
       "successfully sent",
       "Bill payment to",
       "Fuliza M-PESA amount is",
-      "credited to",
     ],
     transaction: ["Transaction cost", "charges", "Interest charged"],
   };
