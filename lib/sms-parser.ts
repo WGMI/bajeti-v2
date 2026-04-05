@@ -10,6 +10,10 @@ export interface SmsParseResult {
   date: string;
   fee: number;
   transactionRef: string | null;
+  /** Human-readable payee / payer from the SMS (e.g. merchant name). */
+  counterparty: string | null;
+  /** Normalized key for grouping and user-defined category rules. */
+  counterpartyKey: string | null;
 }
 
 export interface ParseSmsOptions {
@@ -175,6 +179,63 @@ function resolveTransactionDate(
   return deviceDate ?? bodyDate ?? "";
 }
 
+/**
+ * Stable key for matching user rules and clustering recurring payees/payers.
+ * Strips common Kenya phone patterns so "JOHN 0722…" and "JOHN" align.
+ */
+export function normalizeSmsCounterpartyKey(label: string): string {
+  const collapsed = label
+    .toLowerCase()
+    .replace(/\b\+?254\d{9}\b/g, " ")
+    .replace(/\b0\d{9}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.$/, "");
+  return collapsed.length >= 2 ? collapsed : "";
+}
+
+/** M-PESA-style " on DD/MM/YY " segment used to delimit payee / payer names. */
+const ON_DATE_CHUNK = String.raw`\s+on\s+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}`;
+
+function trimCounterpartyLabel(raw: string): string {
+  return raw.replace(/\.$/, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Best-effort payee (expense) or payer (income) for M-PESA-style SMS bodies.
+ */
+export function extractSmsCounterpartyLabel(
+  message: string,
+  type: SmsType
+): string | null {
+  if (type === "neither") return null;
+  const m = message.replace(/\s+/g, " ").trim();
+
+  if (type === "expense") {
+    const paid = m.match(
+      new RegExp(`\\bpaid\\s+to\\s+(.+?)(${ON_DATE_CHUNK})`, "i")
+    );
+    if (paid?.[1]) return trimCounterpartyLabel(paid[1]);
+    const sent = m.match(
+      new RegExp(`\\bsent\\s+to\\s+(.+?)(${ON_DATE_CHUNK})`, "i")
+    );
+    if (sent?.[1]) return trimCounterpartyLabel(sent[1]);
+    const bill = m.match(
+      /\bbill\s+payment\s+to\s+(.+?)(?=\s+on\s+\d{1,2}[\/\-]|\.\s*$|(?=\s+for\s))/i
+    );
+    if (bill?.[1]) return trimCounterpartyLabel(bill[1]);
+    const success = m.match(
+      new RegExp(`\\bsuccessfully\\s+sent\\s+to\\s+(.+?)(${ON_DATE_CHUNK})`, "i")
+    );
+    if (success?.[1]) return trimCounterpartyLabel(success[1]);
+    return null;
+  }
+
+  const from = m.match(new RegExp(`\\bfrom\\s+(.+?)(${ON_DATE_CHUNK})`, "i"));
+  if (from?.[1]) return trimCounterpartyLabel(from[1]);
+  return null;
+}
+
 function extractTransactionRef(message: string): string | null {
   // Typical M-PESA format: "UC4L68HQ9G Confirmed. ..."
   const confirmedPrefixMatch = message.match(
@@ -241,6 +302,8 @@ export function parseSMS(
       date: "",
       fee: 0,
       transactionRef: null,
+      counterparty: null,
+      counterpartyKey: null,
     };
   }
 
@@ -326,17 +389,52 @@ export function parseSMS(
       : null;
   date = resolveTransactionDate(bodyDate, deviceDate, transactionDateSource);
 
-  const result = { message, type, amount, date, fee, transactionRef };
+  let counterparty: string | null = null;
+  let counterpartyKey: string | null = null;
+  if (type !== "neither") {
+    counterparty = extractSmsCounterpartyLabel(message, type);
+    const keyRaw = counterparty
+      ? normalizeSmsCounterpartyKey(counterparty)
+      : "";
+    counterpartyKey = keyRaw || null;
+  }
+
+  const result = {
+    message,
+    type,
+    amount,
+    date,
+    fee,
+    transactionRef,
+    counterparty,
+    counterpartyKey,
+  };
   console.log("[SMS parse] result:", {
     type: result.type,
     amount: result.amount,
     date: result.date,
     fee: result.fee,
     transactionRef: result.transactionRef,
+    counterparty: result.counterparty,
+    counterpartyKey: result.counterpartyKey,
   });
   return result;
 }
 
 // Convenience alias using camelCase naming.
 export const parseSms = parseSMS;
+
+/** JSON shape returned by `/api/sms` for the parsed block. */
+export function smsParseResultForApi(p: SmsParseResult) {
+  return {
+    message: p.message,
+    type: p.type,
+    amount: p.amount,
+    date: p.date,
+    fee: p.fee,
+    transactionRef: p.transactionRef,
+    counterparty: p.counterparty,
+    counterpartyKey: p.counterpartyKey,
+  };
+}
 

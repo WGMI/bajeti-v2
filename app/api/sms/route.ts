@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
-import { parseSMS } from "@/lib/sms-parser";
+import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
+import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
@@ -16,7 +17,22 @@ type TransactionRow = {
   date: string;
   notes: string | null;
   type: string;
+  sms_counterparty: string | null;
+  sms_counterparty_key: string | null;
 };
+
+function transactionJson(row: TransactionRow) {
+  return {
+    id: row.id,
+    amount: Number(row.amount),
+    categoryId: row.category_id,
+    date: normalizeTransactionDateFromDb(row.date),
+    notes: row.notes ?? "",
+    type: row.type as "income" | "expense",
+    smsCounterparty: row.sms_counterparty,
+    smsCounterpartyKey: row.sms_counterparty_key,
+  };
+}
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -79,14 +95,7 @@ export async function POST(request: Request) {
         status: "ignored",
         transactionCreated: false,
         reason: skipReason,
-        parsed: {
-          message: parsed.message,
-          type: parsed.type,
-          amount: parsed.amount,
-          date: parsed.date,
-          fee: parsed.fee,
-          transactionRef: parsed.transactionRef,
-        },
+        parsed: smsParseResultForApi(parsed),
       });
     }
 
@@ -113,7 +122,7 @@ export async function POST(request: Request) {
       ` as CategoryRow[];
     }
 
-    const category = categoryRows.find((c) => c.type === parsed.type);
+    const category = await resolveCategoryForSmsIngestion(userId, parsed, categoryRows);
     if (!category) {
       return NextResponse.json(
         {
@@ -121,14 +130,7 @@ export async function POST(request: Request) {
           status: "ignored",
           transactionCreated: false,
           reason: `No category found for parsed type: ${parsed.type}`,
-          parsed: {
-            message: parsed.message,
-            type: parsed.type,
-            amount: parsed.amount,
-            date: parsed.date,
-            fee: parsed.fee,
-            transactionRef: parsed.transactionRef,
-          },
+          parsed: smsParseResultForApi(parsed),
         },
         { status: 400 }
       );
@@ -153,7 +155,8 @@ export async function POST(request: Request) {
       rawMessageHash,
     });
     const existingRows = await sql`
-      SELECT id, amount, category_id, date::text AS date, notes, type
+      SELECT id, amount, category_id, date::text AS date, notes, type,
+        sms_counterparty, sms_counterparty_key
       FROM transactions
       WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
       LIMIT 1
@@ -169,22 +172,8 @@ export async function POST(request: Request) {
         status: "duplicate",
         transactionCreated: false,
         reason: "SMS already processed",
-        parsed: {
-          message: parsed.message,
-          type: parsed.type,
-          amount: parsed.amount,
-          date: parsed.date,
-          fee: parsed.fee,
-          transactionRef: parsed.transactionRef,
-        },
-        transaction: {
-          id: existing.id,
-          amount: Number(existing.amount),
-          categoryId: existing.category_id,
-          date: normalizeTransactionDateFromDb(existing.date),
-          notes: existing.notes ?? "",
-          type: existing.type as "income" | "expense",
-        },
+        parsed: smsParseResultForApi(parsed),
+        transaction: transactionJson(existing),
       });
     }
 
@@ -197,7 +186,9 @@ export async function POST(request: Request) {
         notes,
         type,
         sms_idempotency_key,
-        sms_raw_hash
+        sms_raw_hash,
+        sms_counterparty,
+        sms_counterparty_key
       )
       VALUES (
         ${userId},
@@ -207,10 +198,13 @@ export async function POST(request: Request) {
         ${parsed.message},
         ${parsed.type}::category_type,
         ${smsIdempotencyKey},
-        ${rawMessageHash}
+        ${rawMessageHash},
+        ${parsed.counterparty},
+        ${parsed.counterpartyKey}
       )
       ON CONFLICT DO NOTHING
-      RETURNING id, amount, category_id, date::text AS date, notes, type
+      RETURNING id, amount, category_id, date::text AS date, notes, type,
+        sms_counterparty, sms_counterparty_key
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {
@@ -219,7 +213,8 @@ export async function POST(request: Request) {
         smsIdempotencyKey,
       });
       const existingRowsAfterConflict = await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, type
+        SELECT id, amount, category_id, date::text AS date, notes, type,
+          sms_counterparty, sms_counterparty_key
         FROM transactions
         WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
         LIMIT 1
@@ -244,22 +239,8 @@ export async function POST(request: Request) {
         status: "duplicate",
         transactionCreated: false,
         reason: "SMS already processed",
-        parsed: {
-          message: parsed.message,
-          type: parsed.type,
-          amount: parsed.amount,
-          date: parsed.date,
-          fee: parsed.fee,
-          transactionRef: parsed.transactionRef,
-        },
-        transaction: {
-          id: existingAfterConflict.id,
-          amount: Number(existingAfterConflict.amount),
-          categoryId: existingAfterConflict.category_id,
-          date: normalizeTransactionDateFromDb(existingAfterConflict.date),
-          notes: existingAfterConflict.notes ?? "",
-          type: existingAfterConflict.type as "income" | "expense",
-        },
+        parsed: smsParseResultForApi(parsed),
+        transaction: transactionJson(existingAfterConflict),
       });
     }
     console.log("[POST /api/sms] transaction inserted (not duplicate)", {
@@ -271,22 +252,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       status: "created",
       transactionCreated: true,
-      parsed: {
-        message: parsed.message,
-        type: parsed.type,
-        amount: parsed.amount,
-        date: parsed.date,
-        fee: parsed.fee,
-        transactionRef: parsed.transactionRef,
-      },
-      transaction: {
-        id: row.id,
-        amount: Number(row.amount),
-        categoryId: row.category_id,
-        date: normalizeTransactionDateFromDb(row.date),
-        notes: row.notes ?? "",
-        type: row.type as "income" | "expense",
-      },
+      parsed: smsParseResultForApi(parsed),
+      transaction: transactionJson(row),
     });
   } catch (e) {
     console.error("[POST /api/sms]", e);

@@ -14,6 +14,9 @@ export interface Transaction {
   date: string; // ISO date YYYY-MM-DD
   notes: string;
   type: CategoryType;
+  /** Payee / payer label from SMS when available. */
+  smsCounterparty?: string | null;
+  smsCounterpartyKey?: string | null;
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, "id">[] = [

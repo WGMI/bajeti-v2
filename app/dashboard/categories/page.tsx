@@ -27,7 +27,8 @@ function CategoriesPageContent() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("add")) {
+    // Only `add=1` is for this page. `add=income|expense` is for GlobalAddTransactionDialog.
+    if (searchParams.get("add") === "1") {
       setEditingCat(null);
       setDialogOpen(true);
     }
@@ -193,7 +194,7 @@ function CategoriesPageContent() {
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open && searchParams.get("add")) {
+          if (!open && searchParams.get("add") === "1") {
             router.replace("/dashboard/categories");
           }
         }}

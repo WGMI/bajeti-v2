@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
-import { parseSMS } from "@/lib/sms-parser";
+import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
+import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
@@ -17,6 +18,8 @@ type TransactionRow = {
   date: string;
   notes: string | null;
   type: string;
+  sms_counterparty: string | null;
+  sms_counterparty_key: string | null;
 };
 
 function rowToTransaction(row: TransactionRow) {
@@ -27,6 +30,8 @@ function rowToTransaction(row: TransactionRow) {
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as "income" | "expense",
+    smsCounterparty: row.sms_counterparty,
+    smsCounterpartyKey: row.sms_counterparty_key,
   };
 }
 
@@ -45,6 +50,8 @@ type BulkItemParsed = {
   date: string;
   fee: number;
   transactionRef: string | null;
+  counterparty: string | null;
+  counterpartyKey: string | null;
 };
 
 type BulkItemResult =
@@ -88,14 +95,7 @@ type BulkSummary = {
 const MAX_MESSAGES = 100;
 
 function extractParsedForResponse(parsed: ReturnType<typeof parseSMS>): BulkItemParsed {
-  return {
-    message: parsed.message,
-    type: parsed.type,
-    amount: parsed.amount,
-    date: parsed.date,
-    fee: parsed.fee,
-    transactionRef: parsed.transactionRef,
-  };
+  return smsParseResultForApi(parsed) as BulkItemParsed;
 }
 
 export async function POST(request: Request) {
@@ -211,9 +211,11 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const category = categoryRows.find((c) => c.type === parsed.type) as
-          | { id: string; type: CategoryType }
-          | undefined;
+        const category = (await resolveCategoryForSmsIngestion(
+          userId,
+          parsed,
+          categoryRows
+        )) as { id: string; type: CategoryType } | undefined;
 
         if (!category) {
           results.push({
@@ -237,7 +239,8 @@ export async function POST(request: Request) {
         );
 
         const existingRows = await sql`
-          SELECT id, amount, category_id, date::text AS date, notes, type
+          SELECT id, amount, category_id, date::text AS date, notes, type,
+            sms_counterparty, sms_counterparty_key
           FROM transactions
           WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
           LIMIT 1
@@ -264,7 +267,9 @@ export async function POST(request: Request) {
             notes,
             type,
             sms_idempotency_key,
-            sms_raw_hash
+            sms_raw_hash,
+            sms_counterparty,
+            sms_counterparty_key
           )
           VALUES (
             ${userId},
@@ -274,17 +279,21 @@ export async function POST(request: Request) {
             ${parsed.message},
             ${parsed.type}::category_type,
             ${smsIdempotencyKey},
-            ${rawMessageHash}
+            ${rawMessageHash},
+            ${parsed.counterparty},
+            ${parsed.counterpartyKey}
           )
           ON CONFLICT DO NOTHING
-          RETURNING id, amount, category_id, date::text AS date, notes, type
+          RETURNING id, amount, category_id, date::text AS date, notes, type,
+            sms_counterparty, sms_counterparty_key
         `;
 
         const row = rows[0] as TransactionRow | undefined;
         if (!row) {
           // Highly likely a unique-index conflict: treat as duplicate.
           const existingRowsAfterConflict = await sql`
-            SELECT id, amount, category_id, date::text AS date, notes, type
+            SELECT id, amount, category_id, date::text AS date, notes, type,
+              sms_counterparty, sms_counterparty_key
             FROM transactions
             WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
             LIMIT 1

@@ -11,6 +11,8 @@ type TransactionRow = {
   date: string;
   notes: string | null;
   type: string;
+  sms_counterparty: string | null;
+  sms_counterparty_key: string | null;
 };
 
 function rowToTransaction(row: TransactionRow) {
@@ -21,6 +23,8 @@ function rowToTransaction(row: TransactionRow) {
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as "income" | "expense",
+    smsCounterparty: row.sms_counterparty,
+    smsCounterpartyKey: row.sms_counterparty_key,
   };
 }
 
@@ -75,7 +79,8 @@ export async function GET(request: Request) {
       }
       if (usePagination && cursor) {
         rows = await sql`
-          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type
+          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+            t.sms_counterparty, t.sms_counterparty_key
           FROM transactions t
           INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
           WHERE t.user_id = ${userId}
@@ -86,7 +91,8 @@ export async function GET(request: Request) {
         ` as TransactionRow[];
       } else if (usePagination) {
         rows = await sql`
-          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type
+          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+            t.sms_counterparty, t.sms_counterparty_key
           FROM transactions t
           INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
           WHERE t.user_id = ${userId}
@@ -96,7 +102,8 @@ export async function GET(request: Request) {
         ` as TransactionRow[];
       } else {
         rows = await sql`
-          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type
+          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+            t.sms_counterparty, t.sms_counterparty_key
           FROM transactions t
           INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
           WHERE t.user_id = ${userId}
@@ -114,7 +121,8 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
           }
           rows = await sql`
-            SELECT id, amount, category_id, date::text AS date, notes, type
+            SELECT id, amount, category_id, date::text AS date, notes, type,
+              sms_counterparty, sms_counterparty_key
             FROM transactions
             WHERE user_id = ${userId}
               AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
@@ -124,7 +132,8 @@ export async function GET(request: Request) {
           ` as TransactionRow[];
         } else {
           rows = await sql`
-            SELECT id, amount, category_id, date::text AS date, notes, type
+            SELECT id, amount, category_id, date::text AS date, notes, type,
+              sms_counterparty, sms_counterparty_key
             FROM transactions
             WHERE user_id = ${userId}
               AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
@@ -134,7 +143,8 @@ export async function GET(request: Request) {
         }
       } else {
         rows = await sql`
-          SELECT id, amount, category_id, date::text AS date, notes, type
+          SELECT id, amount, category_id, date::text AS date, notes, type,
+            sms_counterparty, sms_counterparty_key
           FROM transactions
           WHERE user_id = ${userId}
             AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
@@ -190,7 +200,8 @@ export async function POST(request: Request) {
         hashedIdempotencyKey,
       });
       const existingRows = await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, type
+        SELECT id, amount, category_id, date::text AS date, notes, type,
+          sms_counterparty, sms_counterparty_key
         FROM transactions
         WHERE user_id = ${userId}
           AND (
@@ -222,7 +233,8 @@ export async function POST(request: Request) {
         ${hashedIdempotencyKey}
       )
       ON CONFLICT DO NOTHING
-      RETURNING id, amount, category_id, date::text AS date, notes, type
+      RETURNING id, amount, category_id, date::text AS date, notes, type,
+        sms_counterparty, sms_counterparty_key
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {
@@ -235,7 +247,8 @@ export async function POST(request: Request) {
         hashedIdempotencyKey,
       });
       const existingRows = await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, type
+        SELECT id, amount, category_id, date::text AS date, notes, type,
+          sms_counterparty, sms_counterparty_key
         FROM transactions
         WHERE user_id = ${userId}
           AND (

@@ -10,6 +10,8 @@ type TransactionRow = {
   date: string;
   notes: string | null;
   type: string;
+  sms_counterparty: string | null;
+  sms_counterparty_key: string | null;
 };
 
 function rowToTransaction(row: TransactionRow) {
@@ -20,6 +22,8 @@ function rowToTransaction(row: TransactionRow) {
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as "income" | "expense",
+    smsCounterparty: row.sms_counterparty,
+    smsCounterpartyKey: row.sms_counterparty_key,
   };
 }
 
@@ -52,7 +56,8 @@ export async function PATCH(
       UPDATE transactions
       SET amount = ${numAmount}, category_id = ${categoryId}, date = ${date}, notes = ${notes ?? ""}, type = (${type})::category_type
       WHERE id = ${id} AND user_id = ${userId}
-      RETURNING id, amount, category_id, date::text AS date, notes, type
+      RETURNING id, amount, category_id, date::text AS date, notes, type,
+        sms_counterparty, sms_counterparty_key
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {
