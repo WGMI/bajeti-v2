@@ -54,6 +54,23 @@ export default function MonthlyPage() {
   const { currency, dateFormat } = useSettings();
   const byMonth = useMemo(() => getMonthTotals(transactions), [transactions]);
 
+  const sortedMonths = useMemo(() => {
+    return Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
+  }, [byMonth]);
+
+  const txByMonth = useMemo(() => {
+    const map: Record<string, Transaction[]> = {};
+    for (const tx of transactions) {
+      const key = getMonthKey(tx.date);
+      if (!map[key]) map[key] = [];
+      map[key].push(tx);
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => compareIsoDateStringsDesc(a.date, b.date));
+    }
+    return map;
+  }, [transactions]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
@@ -71,23 +88,6 @@ export default function MonthlyPage() {
       </div>
     );
   }
-
-  const sortedMonths = useMemo(() => {
-    return Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
-  }, [byMonth]);
-
-  const txByMonth = useMemo(() => {
-    const map: Record<string, Transaction[]> = {};
-    for (const tx of transactions) {
-      const key = getMonthKey(tx.date);
-      if (!map[key]) map[key] = [];
-      map[key].push(tx);
-    }
-    for (const key of Object.keys(map)) {
-      map[key].sort((a, b) => compareIsoDateStringsDesc(a.date, b.date));
-    }
-    return map;
-  }, [transactions]);
 
   return (
     <div className="space-y-6">
@@ -196,7 +196,6 @@ export default function MonthlyPage() {
         <div className="space-y-6">
           {sortedMonths.map((key) => {
             const totals = byMonth[key];
-            const list = txByMonth[key] ?? [];
             const isCurrent = key === getCurrentMonthKey();
             const { dateFrom, dateTo } = getMonthDateRange(key);
             const href = `/dashboard/transactions?dateFrom=${dateFrom}&dateTo=${dateTo}`;
@@ -208,13 +207,13 @@ export default function MonthlyPage() {
             return (
               <Link key={key} href={href} className="block">
                 <Card className="overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer">
-                  <div className="flex min-h-[140px]">
+                  <div className="flex min-h-[140px] flex-col sm:flex-row">
                     <div
-                      className="w-24 flex-shrink-0 self-stretch rounded-l-lg overflow-hidden bg-muted/20 flex items-center justify-center"
-                      style={{ minHeight: 140 }}
+                      className="h-28 w-full flex-shrink-0 overflow-hidden bg-muted/20 flex items-center justify-center rounded-t-lg sm:h-auto sm:w-24 sm:self-stretch sm:rounded-l-lg sm:rounded-t-none"
+                      style={{ minHeight: 112 }}
                     >
-                      <div className="h-full w-full" style={{ minHeight: 140 }}>
-                        <ResponsiveContainer width="100%" height="100%" minHeight={140}>
+                      <div className="h-full w-full" style={{ minHeight: 112 }}>
+                        <ResponsiveContainer width="100%" height="100%" minHeight={112}>
                           <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
                             <Pie
                               data={pieData}
@@ -234,7 +233,7 @@ export default function MonthlyPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-base font-medium flex items-center justify-between">
+                        <CardTitle className="flex flex-col gap-1 text-base font-medium sm:flex-row sm:items-center sm:justify-between">
                           <span>{formatMonthKey(key)}</span>
                           {isCurrent && (
                             <span className="text-xs font-normal text-muted-foreground">
@@ -244,7 +243,7 @@ export default function MonthlyPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4 pt-0">
-                        <div className="grid grid-cols-3 gap-4 rounded-lg border bg-muted/30 p-4">
+                        <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3 sm:gap-4">
                           <div>
                             <p className="text-xs text-muted-foreground">Income</p>
                             <p className="font-semibold text-success">
@@ -268,13 +267,13 @@ export default function MonthlyPage() {
                             </p>
                           </div>
                         </div>
-                        {list.length > 0 && (
+                        {(txByMonth[key] ?? []).length > 0 && (
                           <div>
                             <p className="text-sm font-medium text-muted-foreground mb-2">
-                              Transactions ({list.length})
+                              Transactions ({(txByMonth[key] ?? []).length})
                             </p>
                             <ul className="min-w-0 space-y-2">
-                              {list.slice(0, 3).map((tx) => {
+                              {(txByMonth[key] ?? []).slice(0, 3).map((tx) => {
                                 const cat = getCategoryById(tx.categoryId);
                                 const isIncome = tx.type === "income";
                                 return (
@@ -282,7 +281,7 @@ export default function MonthlyPage() {
                                     key={tx.id}
                                     role="button"
                                     tabIndex={0}
-                                    className="flex min-w-0 items-center justify-between gap-2 text-sm border-b border-border/50 pb-2 last:border-0 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 transition-colors"
+                                    className="flex min-w-0 flex-col items-start gap-1 text-sm border-b border-border/50 pb-2 last:border-0 cursor-pointer rounded px-1 -mx-1 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between sm:gap-2"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -301,12 +300,12 @@ export default function MonthlyPage() {
                                     <span className="shrink-0 text-muted-foreground tabular-nums">
                                       {formatDateWithPreference(tx.date, dateFormat)}
                                     </span>
-                                    <span className="min-w-0 flex-1 truncate">
+                                    <span className="min-w-0 w-full flex-1 [overflow-wrap:anywhere] sm:truncate">
                                       {cat?.name ?? "—"} {tx.notes ? `· ${tx.notes}` : ""}
                                     </span>
                                     <span
                                       className={cn(
-                                        "min-w-0 max-w-[45%] shrink text-right tabular-nums [overflow-wrap:anywhere]",
+                                        "min-w-0 w-full text-left tabular-nums [overflow-wrap:anywhere] sm:max-w-[45%] sm:shrink sm:text-right",
                                         isIncome ? "font-medium text-success" : ""
                                       )}
                                     >
@@ -317,9 +316,9 @@ export default function MonthlyPage() {
                                 );
                               })}
                             </ul>
-                            {list.length > 3 && (
+                            {(txByMonth[key] ?? []).length > 3 && (
                               <p className="text-xs text-muted-foreground mt-2">
-                                + {list.length - 3} more — click to view all
+                                + {(txByMonth[key] ?? []).length - 3} more — click to view all
                               </p>
                             )}
                           </div>

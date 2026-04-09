@@ -137,9 +137,9 @@ export function extractDateFromSmsBody(message: string): string | null {
     if (cal) return cal;
   }
 
-  // "4 Apr 2026" / "04 APR 26"
+  // "4 Apr 2026" / "04 APR 26" / "28-SEP-2025"
   const dMonY = message.match(
-    /\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})\b/
+    /\b(\d{1,2})[\s\/-]+([A-Za-z]{3,9})[\s,\/-]+(\d{2,4})\b/
   );
   if (dMonY) {
     const monthNum = monthNameToNum(dMonY[2]);

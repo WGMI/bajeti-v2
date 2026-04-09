@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,13 @@ import { Pencil, Trash2, Loader2, Filter, Search } from "lucide-react";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
+import { formatCurrency } from "@/lib/format-currency";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
-import type { CategoryType, Transaction } from "@/lib/budget-types";
+import type { Category, CategoryType, Transaction } from "@/lib/budget-types";
 import { TransactionFormDialog } from "@/components/dashboard/transaction-form-dialog";
 import { TransactionDetailDialog } from "@/components/dashboard/transaction-detail-dialog";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
   Select,
   SelectContent,
@@ -24,6 +26,14 @@ import { Label } from "@/components/ui/label";
 
 const PAGE_SIZE = 20;
 const API = "/api";
+const CATEGORY_CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+] as const;
+const EMPTY_SLICE_COLOR = "rgba(0, 0, 0, 0.08)";
 
 type TransactionsResponse = {
   transactions: Transaction[];
@@ -31,6 +41,28 @@ type TransactionsResponse = {
 };
 
 type TypeFilter = "all" | "income" | "expense";
+
+function aggregateByCategory(
+  txs: Transaction[],
+  type: CategoryType,
+  getCategoryById: (id: string) => Category | undefined
+): { name: string; value: number; fill: string }[] {
+  const map = new Map<string, number>();
+  for (const tx of txs) {
+    if (tx.type !== type) continue;
+    const cat = getCategoryById(tx.categoryId);
+    const name = cat?.name ?? "Unknown";
+    map.set(name, (map.get(name) ?? 0) + Math.abs(tx.amount));
+  }
+  return Array.from(map.entries())
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value], i) => ({
+      name,
+      value,
+      fill: CATEGORY_CHART_COLORS[i % CATEGORY_CHART_COLORS.length],
+    }));
+}
 
 async function fetchTransactionsPage(
   limit: number,
@@ -73,6 +105,16 @@ function TransactionsPageContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const showCategoryCharts = Boolean(dateFrom && dateTo);
+
+  const incomeSegments = useMemo(
+    () => aggregateByCategory(list, "income", getCategoryById),
+    [list, getCategoryById]
+  );
+  const expenseSegments = useMemo(
+    () => aggregateByCategory(list, "expense", getCategoryById),
+    [list, getCategoryById]
+  );
 
   const hasActiveFilters =
     typeFilter !== "all" || dateFrom !== "" || dateTo !== "" || searchQuery !== "";
@@ -211,6 +253,53 @@ function TransactionsPageContent() {
           <CardHeader className="flex flex-row items-center justify-between p-4 pb-4 sm:p-6 sm:pb-4">
             <CardTitle className="text-base font-medium">All Transactions</CardTitle>
           </CardHeader>
+          {showCategoryCharts && (
+            <div className="grid grid-cols-1 gap-6 border-b border-border/50 px-4 pt-4 pb-3 sm:grid-cols-2 sm:px-6">
+              {(["Income", "Expense"] as const).map((label, idx) => {
+                const segments = idx === 0 ? incomeSegments : expenseSegments;
+                const chartData =
+                  segments.length > 0
+                    ? segments
+                    : [{ name: "No data", value: 1, fill: EMPTY_SLICE_COLOR }];
+                const title = idx === 0 ? "Income by category" : "Expenses by category";
+                return (
+                  <div key={label} className="flex min-w-0 flex-col">
+                    <p className="mb-2 text-center text-xs font-medium text-muted-foreground">
+                      {title}
+                    </p>
+                    <div className="h-[180px] w-full min-w-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={chartData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius="42%"
+                            outerRadius="78%"
+                            paddingAngle={segments.length > 1 ? 2 : 0}
+                            stroke="none"
+                            isAnimationActive={false}
+                          >
+                            {chartData.map((entry, i) => (
+                              <Cell key={`${entry.name}-${i}`} fill={entry.fill} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value: number) =>
+                              segments.length > 0 ? formatCurrency(value, currency) : ""
+                            }
+                            labelFormatter={(name) => (segments.length > 0 ? String(name) : "")}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="flex flex-col gap-4 border-b border-border/50 px-4 pb-4 sm:flex-row sm:flex-wrap sm:items-end sm:px-6">
             <div className="flex items-center gap-2 text-muted-foreground sm:shrink-0">
               <Filter className="h-4 w-4 shrink-0" />
