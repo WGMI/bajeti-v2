@@ -9,7 +9,11 @@ export async function resolveCategoryForSmsIngestion(
   parsed: { type: string; counterpartyKey: string | null },
   categoryRows: CategoryRow[]
 ): Promise<CategoryRow | undefined> {
-  const fallback = categoryRows.find((c) => c.type === parsed.type);
+  const categoriesForType = categoryRows.filter((c) => c.type === parsed.type);
+  const otherCategory = categoriesForType.find((c) =>
+    c.name.toLowerCase().includes("other")
+  );
+  const fallback = otherCategory ?? categoriesForType[0];
   if (!parsed.counterpartyKey || parsed.type === "neither") {
     return fallback;
   }
