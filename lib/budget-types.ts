@@ -28,4 +28,5 @@ export const DEFAULT_CATEGORIES: Omit<Category, "id">[] = [
   { name: "Savings", type: "expense", isDefault: true },
   { name: "Salary", type: "income", isDefault: true },
   { name: "Other Income", type: "income", isDefault: true },
+  { name: "Other", type: "expense", isDefault: true },
 ];
