@@ -212,6 +212,12 @@ export function extractSmsCounterpartyLabel(
   const m = message.replace(/\s+/g, " ").trim();
 
   if (type === "expense") {
+    // "… credited to 2547… JOHN DOE. Ref. …" is recipient-side wording -> sender expense.
+    const credited = m.match(
+      /\bcredited\s+to\s+(?:\+?254\d{9}\s+|0\d{9}\s+)?(.+?)(?=\.\s*Ref(?:\.|\s)|$)/i
+    );
+    if (credited?.[1]) return trimCounterpartyLabel(credited[1]);
+
     const paid = m.match(
       new RegExp(`\\bpaid\\s+to\\s+(.+?)(${ON_DATE_CHUNK})`, "i")
     );
@@ -230,12 +236,6 @@ export function extractSmsCounterpartyLabel(
     if (success?.[1]) return trimCounterpartyLabel(success[1]);
     return null;
   }
-
-  // "… credited to 2547… JOHN DOE. Ref. …" (credit to wallet / account alerts)
-  const credited = m.match(
-    /\bcredited\s+to\s+(?:\+?254\d{9}\s+|0\d{9}\s+)?(.+?)(?=\.\s*Ref(?:\.|\s)|$)/i
-  );
-  if (credited?.[1]) return trimCounterpartyLabel(credited[1]);
 
   const from = m.match(new RegExp(`\\bfrom\\s+(.+?)(${ON_DATE_CHUNK})`, "i"));
   if (from?.[1]) return trimCounterpartyLabel(from[1]);
@@ -315,8 +315,9 @@ export function parseSMS(
 
   // Contextual keyword rules
   const smsRules: Record<string, string[]> = {
-    income: ["received", "credited to"],
+    income: ["received"],
     expense: [
+      "credited to",
       "drawn from",
       "sent to",
       "paid to",
