@@ -196,6 +196,13 @@ export function normalizeSmsCounterpartyKey(label: string): string {
 
 /** M-PESA-style " on DD/MM/YY " segment used to delimit payee / payer names. */
 const ON_DATE_CHUNK = String.raw`\s+on\s+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}`;
+/**
+ * Common boundary markers after payee names in expense SMS variants:
+ * - old M-PESA: "on 4/4/26"
+ * - bill flows: "for account ...", "for acc ..."
+ * - refs: "Ref ...", "Ref. ..."
+ */
+const EXPENSE_COUNTERPARTY_BOUNDARY = String.raw`(?:${ON_DATE_CHUNK}|\s+for\s+(?:account|acc)\b|\s+ref(?:\.|\b)|\.\s*ref(?:\.|\b)|$)`;
 
 function trimCounterpartyLabel(raw: string): string {
   return raw.replace(/\.$/, "").replace(/\s+/g, " ").trim();
@@ -219,11 +226,17 @@ export function extractSmsCounterpartyLabel(
     if (credited?.[1]) return trimCounterpartyLabel(credited[1]);
 
     const paid = m.match(
-      new RegExp(`\\bpaid\\s+to\\s+(.+?)(${ON_DATE_CHUNK})`, "i")
+      new RegExp(
+        `\\bpaid\\s+to\\s+(.+?)(?=${EXPENSE_COUNTERPARTY_BOUNDARY})`,
+        "i"
+      )
     );
     if (paid?.[1]) return trimCounterpartyLabel(paid[1]);
     const sent = m.match(
-      new RegExp(`\\bsent\\s+to\\s+(.+?)(${ON_DATE_CHUNK})`, "i")
+      new RegExp(
+        `\\bsent\\s+to\\s+(.+?)(?=${EXPENSE_COUNTERPARTY_BOUNDARY})`,
+        "i"
+      )
     );
     if (sent?.[1]) return trimCounterpartyLabel(sent[1]);
     const bill = m.match(
