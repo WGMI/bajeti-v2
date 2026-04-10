@@ -131,7 +131,7 @@ function TransactionFormFields({
     return [normalized];
   }
 
-  const handleParseSms = () => {
+  const handleParseSms = async () => {
     const trimmed = smsText.trim();
     if (!trimmed) return;
     setSmsParseFeedback(null);
@@ -167,15 +167,57 @@ function TransactionFormFields({
         transactionRef: result.transactionRef,
       })
     );
-    // Always set category from SMS when we detect income/expense so the transaction
-    // is saved as what the message says (e.g. "paid to" → expense).
+    // Set category from SMS type, but prefer an explicit counterparty rule match when present.
     if (result.type === "income" || result.type === "expense") {
-      const firstOfType = categories.find((c) => c.type === result.type)?.id;
-      console.log("[SMS dialog] setting category from SMS. result.type:", result.type, "firstOfType:", firstOfType);
-      if (firstOfType) {
-        setCategoryId(firstOfType);
+      let matchedCategoryId: string | null = null;
+      if (result.counterpartyKey) {
+        try {
+          const rulesRes = await fetch("/api/counterparty-rules", {
+            credentials: "same-origin",
+          });
+          if (rulesRes.ok) {
+            const rulesData = (await rulesRes.json()) as {
+              rules?: Array<{
+                counterpartyKey: string;
+                transactionType: CategoryType;
+                categoryId: string;
+              }>;
+            };
+            const match = (rulesData.rules ?? []).find(
+              (r) =>
+                r.transactionType === result.type &&
+                r.counterpartyKey === result.counterpartyKey
+            );
+            matchedCategoryId = match?.categoryId ?? null;
+          }
+        } catch (e) {
+          console.warn("[SMS dialog] failed to fetch counterparty rules", e);
+        }
+      }
+
+      const firstOfType = categories.find((c) => c.type === result.type)?.id ?? null;
+      const categoryFromSms = matchedCategoryId ?? firstOfType;
+      console.log(
+        "[SMS dialog] setting category from SMS.",
+        "result.type:",
+        result.type,
+        "counterpartyKey:",
+        result.counterpartyKey,
+        "matchedCategoryId:",
+        matchedCategoryId,
+        "firstOfType:",
+        firstOfType
+      );
+      if (categoryFromSms) {
+        setCategoryId(categoryFromSms);
       } else {
-        console.warn("[SMS dialog] no category found for type:", result.type, "– ensure there is at least one", result.type, "category.");
+        console.warn(
+          "[SMS dialog] no category found for type:",
+          result.type,
+          "– ensure there is at least one",
+          result.type,
+          "category."
+        );
       }
     } else {
       console.log("[SMS dialog] parsed type is neither; not changing category.");
