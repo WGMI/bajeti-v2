@@ -219,6 +219,13 @@ export function extractSmsCounterpartyLabel(
   const m = message.replace(/\s+/g, " ").trim();
 
   if (type === "expense") {
+    // Card auth pattern, e.g.
+    // "Auth for card 4478..0465 at SPOTIFY AB on 2025-10-11 19:15:45 Ref:..."
+    const cardAuth = m.match(
+      /\bauth\s+for\s+card\s+\S+\s+at\s+(.+?)(?=\s+on\s+\d{4}-\d{2}-\d{2}\b|\s+ref(?:[:.\s]|$)|$)/i
+    );
+    if (cardAuth?.[1]) return trimCounterpartyLabel(cardAuth[1]);
+
     // "… credited to 2547… JOHN DOE. Ref. …" is recipient-side wording -> sender expense.
     const credited = m.match(
       /\bcredited\s+to\s+(?:\+?254\d{9}\s+|0\d{9}\s+)?(.+?)(?=\.\s*Ref(?:\.|\s)|$)/i
