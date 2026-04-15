@@ -96,12 +96,23 @@ export async function POST(request: Request) {
     }
 
     const category = await resolveCategoryForSmsIngestion(userId, parsed, categoryRows);
+    const transactionType = parsed.type === "income" || parsed.type === "expense"
+      ? parsed.type
+      : null;
+    if (!transactionType) {
+      return NextResponse.json({
+        status: "ignored",
+        reason: "Message did not match an income or expense transaction",
+        parsed: parsedForApi,
+        preview: null,
+      });
+    }
     const preview: PreviewTransaction = {
       amount: parsed.amount,
       categoryId: category?.id ?? null,
       date: parsed.date,
       notes: parsed.message,
-      type: parsed.type,
+      type: transactionType,
       smsCounterparty: parsed.counterparty,
       smsCounterpartyKey: parsed.counterpartyKey,
     };
