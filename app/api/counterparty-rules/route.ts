@@ -3,7 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { effectiveCounterpartyFromTransaction } from "@/lib/counterparty-helpers";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
-import { normalizeSmsCounterpartyKey } from "@/lib/sms-parser";
+import {
+  candidateCounterpartyRuleKeys,
+  normalizeSmsCounterpartyKey,
+  splitScopedCounterpartyKey,
+} from "@/lib/sms-parser";
 import type { CategoryType } from "@/lib/budget-types";
 
 type TxRow = {
@@ -103,10 +107,15 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
-    const counterpartyKey = normalizeSmsCounterpartyKey(counterpartyKeyRaw.trim());
-    if (!counterpartyKey) {
+    const requestedKey = counterpartyKeyRaw.trim();
+    const keyParts = splitScopedCounterpartyKey(requestedKey);
+    const baseKey = normalizeSmsCounterpartyKey(keyParts.baseKey);
+    if (!baseKey) {
       return NextResponse.json({ error: "Invalid counterparty key" }, { status: 400 });
     }
+    const counterpartyKey = keyParts.accountReference
+      ? `${baseKey}|account:${keyParts.accountReference}`
+      : baseKey;
 
     const catRows = await sql`
       SELECT id, type::text AS type
@@ -147,7 +156,7 @@ export async function POST(request: Request) {
     `) as TxRow[];
 
     const labelForRow =
-      counterpartyLabel || counterpartyKey.replace(/\b\w/g, (c) => c.toUpperCase());
+      counterpartyLabel || baseKey.replace(/\b\w/g, (c) => c.toUpperCase());
 
     const matchingIds: string[] = [];
     for (const row of allRows) {
@@ -157,7 +166,10 @@ export async function POST(request: Request) {
         row.sms_counterparty_key,
         row.sms_counterparty
       );
-      if (eff?.key === counterpartyKey) matchingIds.push(row.id);
+      const candidateKeys = eff
+        ? candidateCounterpartyRuleKeys(eff.key, row.notes ?? "")
+        : candidateCounterpartyRuleKeys(baseKey, row.notes ?? "");
+      if (candidateKeys.includes(counterpartyKey)) matchingIds.push(row.id);
     }
 
     let updatedRows: TxRow[] = [];

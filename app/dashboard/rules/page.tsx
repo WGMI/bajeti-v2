@@ -20,7 +20,7 @@ export default function RulesPage() {
       </div>
 
       <Tabs defaultValue="created" className="w-full">
-        <TabsList className="w-full max-w-md">
+        <TabsList className="w-full">
           <TabsTrigger value="created">Created rules</TabsTrigger>
           <TabsTrigger value="suggested">Suggested rules</TabsTrigger>
         </TabsList>

@@ -14,6 +14,8 @@ export interface SmsParseResult {
   counterparty: string | null;
   /** Normalized key for grouping and user-defined category rules. */
   counterpartyKey: string | null;
+  /** Optional account reference used for more specific scoped rules. */
+  accountReference: string | null;
 }
 
 export interface ParseSmsOptions {
@@ -194,6 +196,41 @@ export function normalizeSmsCounterpartyKey(label: string): string {
   return collapsed.length >= 2 ? collapsed : "";
 }
 
+export function normalizeSmsAccountReference(raw: string): string {
+  return raw.toLowerCase().replace(/\s+/g, "").trim();
+}
+
+export function extractSmsAccountReference(message: string): string | null {
+  const m = message.match(/\bfor\s+(?:account|acc)\s+([a-z0-9-]{3,})\b/i);
+  if (!m?.[1]) return null;
+  const normalized = normalizeSmsAccountReference(m[1]);
+  return normalized.length >= 3 ? normalized : null;
+}
+
+export function makeScopedCounterpartyKey(counterpartyKey: string, accountReference: string): string {
+  return `${counterpartyKey}|account:${normalizeSmsAccountReference(accountReference)}`;
+}
+
+export function splitScopedCounterpartyKey(counterpartyKey: string): {
+  baseKey: string;
+  accountReference: string | null;
+} {
+  const m = /^(.*)\|account:([a-z0-9-]{3,})$/i.exec(counterpartyKey.trim());
+  if (!m) return { baseKey: counterpartyKey, accountReference: null };
+  return {
+    baseKey: m[1].trim(),
+    accountReference: normalizeSmsAccountReference(m[2]),
+  };
+}
+
+export function candidateCounterpartyRuleKeys(counterpartyKey: string, message: string): string[] {
+  const base = normalizeSmsCounterpartyKey(counterpartyKey);
+  if (!base) return [];
+  const accountRef = extractSmsAccountReference(message);
+  if (!accountRef) return [base];
+  return [makeScopedCounterpartyKey(base, accountRef), base];
+}
+
 /** M-PESA-style " on DD/MM/YY " segment used to delimit payee / payer names. */
 const ON_DATE_CHUNK = String.raw`\s+on\s+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}`;
 /**
@@ -330,6 +367,7 @@ export function parseSMS(
       transactionRef: null,
       counterparty: null,
       counterpartyKey: null,
+      accountReference: null,
     };
   }
 
@@ -417,12 +455,14 @@ export function parseSMS(
 
   let counterparty: string | null = null;
   let counterpartyKey: string | null = null;
+  let accountReference: string | null = null;
   if (type !== "neither") {
     counterparty = extractSmsCounterpartyLabel(message, type);
     const keyRaw = counterparty
       ? normalizeSmsCounterpartyKey(counterparty)
       : "";
     counterpartyKey = keyRaw || null;
+    accountReference = extractSmsAccountReference(message);
   }
 
   const result = {
@@ -434,6 +474,7 @@ export function parseSMS(
     transactionRef,
     counterparty,
     counterpartyKey,
+    accountReference,
   };
   console.log("[SMS parse] result:", {
     type: result.type,
@@ -443,6 +484,7 @@ export function parseSMS(
     transactionRef: result.transactionRef,
     counterparty: result.counterparty,
     counterpartyKey: result.counterpartyKey,
+    accountReference: result.accountReference,
   });
   return result;
 }
@@ -461,6 +503,7 @@ export function smsParseResultForApi(p: SmsParseResult) {
     transactionRef: p.transactionRef,
     counterparty: p.counterparty,
     counterpartyKey: p.counterpartyKey,
+    accountReference: p.accountReference,
   };
 }
 

@@ -22,7 +22,11 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import type { Transaction } from "@/lib/budget-types";
 import { effectiveCounterpartyFromTransaction } from "@/lib/effective-counterparty-from-transaction";
-import { normalizeSmsCounterpartyKey } from "@/lib/sms-parser";
+import {
+  extractSmsAccountReference,
+  makeScopedCounterpartyKey,
+  normalizeSmsCounterpartyKey,
+} from "@/lib/sms-parser";
 
 const API = "/api";
 
@@ -38,6 +42,8 @@ export function CreateCounterpartyRuleDialog({
   const router = useRouter();
   const { categories, refetch } = useBudget();
   const [keyDraft, setKeyDraft] = useState("");
+  const [scope, setScope] = useState<"all" | "account">("all");
+  const [accountRefDraft, setAccountRefDraft] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +57,9 @@ export function CreateCounterpartyRuleDialog({
     );
     // Prefill with readable label; server normalizes on save.
     setKeyDraft(eff?.label ?? eff?.key ?? "");
+    const detectedAccountRef = extractSmsAccountReference(transaction.notes);
+    setScope(detectedAccountRef ? "account" : "all");
+    setAccountRefDraft(detectedAccountRef ?? "");
     setCategoryId(transaction.categoryId);
     setError(null);
   }, [open, transaction]);
@@ -61,6 +70,11 @@ export function CreateCounterpartyRuleDialog({
   const handleSave = async () => {
     if (!transaction || !txType) return;
     const key = normalizeSmsCounterpartyKey(keyDraft.trim());
+    const accountRef = accountRefDraft.trim();
+    if (scope === "account" && accountRef.length < 3) {
+      setError("Enter an account reference with at least 3 characters.");
+      return;
+    }
     if (!key) {
       setError(
         "Enter a payee or payer name (letters or words — phone numbers are stripped when matching)."
@@ -77,12 +91,13 @@ export function CreateCounterpartyRuleDialog({
       const trimmed = keyDraft.trim();
       const counterpartyLabel =
         trimmed.length > 0 ? trimmed : key.replace(/\b\w/g, (c) => c.toUpperCase());
+      const ruleKey = scope === "account" ? makeScopedCounterpartyKey(key, accountRef) : key;
       const res = await fetch(`${API}/counterparty-rules`, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          counterpartyKey: keyDraft.trim(),
+          counterpartyKey: ruleKey,
           counterpartyLabel,
           transactionType: txType,
           categoryId,
@@ -130,6 +145,35 @@ export function CreateCounterpartyRuleDialog({
               2 characters after normalization.
             </p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="rule-scope">Scope</Label>
+            <Select value={scope} onValueChange={(value) => setScope(value as "all" | "account")}>
+              <SelectTrigger id="rule-scope">
+                <span className="truncate">
+                  {scope === "all" ? "All counterparty transactions" : "This account only"}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All counterparty transactions</SelectItem>
+                <SelectItem value="account">This account only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {scope === "account" ? (
+            <div className="space-y-2">
+              <Label htmlFor="rule-account-ref">Account reference</Label>
+              <Input
+                id="rule-account-ref"
+                value={accountRefDraft}
+                onChange={(e) => setAccountRefDraft(e.target.value)}
+                placeholder="e.g. 2049842670"
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                Rule will only match this counterparty when SMS contains this account reference.
+              </p>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="rule-category">Category</Label>
             <Select value={categoryId} onValueChange={setCategoryId}>
