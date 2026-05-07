@@ -38,6 +38,8 @@ const EMPTY_SLICE_COLOR = "rgba(0, 0, 0, 0.08)";
 type TransactionsResponse = {
   transactions: Transaction[];
   nextCursor: string | null;
+  totalIncome?: number;
+  totalExpense?: number;
 };
 
 type TypeFilter = "all" | "income" | "expense";
@@ -106,6 +108,8 @@ function TransactionsPageContent() {
   const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
   const sentinelRef = useRef<HTMLDivElement>(null);
   const showCategoryCharts = Boolean(dateFrom && dateTo);
+  const [fullTotalIncome, setFullTotalIncome] = useState(0);
+  const [fullTotalExpense, setFullTotalExpense] = useState(0);
 
   const incomeSegments = useMemo(
     () => aggregateByCategory(list, "income", getCategoryById),
@@ -127,10 +131,14 @@ function TransactionsPageContent() {
       const data = await fetchTransactionsPage(PAGE_SIZE, null, currentFilters);
       setList(data.transactions);
       setNextCursor(data.nextCursor);
+      setFullTotalIncome(data.totalIncome ?? 0);
+      setFullTotalExpense(data.totalExpense ?? 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load transactions");
       setList([]);
       setNextCursor(null);
+      setFullTotalIncome(0);
+      setFullTotalExpense(0);
     } finally {
       setLoading(false);
     }
@@ -144,6 +152,8 @@ function TransactionsPageContent() {
       const data = await fetchTransactionsPage(PAGE_SIZE, nextCursor, currentFilters);
       setList((prev) => [...prev, ...data.transactions]);
       setNextCursor(data.nextCursor);
+      setFullTotalIncome(data.totalIncome ?? 0);
+      setFullTotalExpense(data.totalExpense ?? 0);
     } catch {
       setNextCursor(null);
     } finally {
@@ -295,6 +305,9 @@ function TransactionsPageContent() {
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
+                    <p className="mt-2 text-center text-sm font-semibold">
+                      {formatCurrency(idx === 0 ? fullTotalIncome : fullTotalExpense, currency)}
+                    </p>
                   </div>
                 );
               })}

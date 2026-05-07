@@ -15,6 +15,11 @@ type TransactionRow = {
   sms_counterparty_key: string | null;
 };
 
+type TotalsRow = {
+  total_income: string | null;
+  total_expense: string | null;
+};
+
 function rowToTransaction(row: TransactionRow) {
   return {
     id: row.id,
@@ -64,7 +69,17 @@ export async function GET(request: Request) {
       : sql`true`;
 
     let rows: TransactionRow[];
+    let totalsRow: TotalsRow[] = [];
     if (searchPattern) {
+      totalsRow = await sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_income,
+          COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_expense
+        FROM transactions t
+        INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+        WHERE t.user_id = ${userId}
+          AND ${typeCond} AND ${dateFromCond} AND ${dateToCond} AND ${searchCond}
+      ` as TotalsRow[];
       const cursorCond = cursor
         ? (() => {
             const parts = cursor.split("|");
@@ -112,6 +127,14 @@ export async function GET(request: Request) {
         ` as TransactionRow[];
       }
     } else {
+      totalsRow = await sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0)::text AS total_income,
+          COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) ELSE 0 END), 0)::text AS total_expense
+        FROM transactions
+        WHERE user_id = ${userId}
+          AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
+      ` as TotalsRow[];
       if (usePagination) {
         if (cursor) {
           const parts = cursor.split("|");
@@ -160,7 +183,11 @@ export async function GET(request: Request) {
         ? `${last.date}|${last.id}`
         : null;
 
-    return NextResponse.json({ transactions, nextCursor });
+    const totals = totalsRow[0];
+    const totalIncome = Number(totals?.total_income ?? 0);
+    const totalExpense = Number(totals?.total_expense ?? 0);
+
+    return NextResponse.json({ transactions, nextCursor, totalIncome, totalExpense });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to fetch transactions" }, { status: 500 });
