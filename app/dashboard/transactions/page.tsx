@@ -42,7 +42,7 @@ type TransactionsResponse = {
   totalExpense?: number;
 };
 
-type TypeFilter = "all" | "income" | "expense";
+type TypeFilter = "all" | "income" | "expense" | "transfer";
 
 function aggregateByCategory(
   txs: Transaction[],
@@ -337,12 +337,21 @@ function TransactionsPageContent() {
                 <Label className="text-xs text-muted-foreground">Type</Label>
                 <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
                   <SelectTrigger className="h-9 w-full sm:w-[130px]">
-                    <span>{typeFilter === "all" ? "All" : typeFilter === "income" ? "Income" : "Expense"}</span>
+                    <span>
+                      {typeFilter === "all"
+                        ? "All"
+                        : typeFilter === "income"
+                          ? "Income"
+                          : typeFilter === "expense"
+                            ? "Expense"
+                            : "Transfer"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="income">Income</SelectItem>
                     <SelectItem value="expense">Expense</SelectItem>
+                    <SelectItem value="transfer">Transfer</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -382,7 +391,6 @@ function TransactionsPageContent() {
               <ul className="min-w-0 space-y-4">
                 {list.map((tx) => {
                   const category = getCategoryById(tx.categoryId);
-                  const isIncome = tx.type === "income";
                   return (
                     <TransactionRow
                       key={tx.id}
@@ -390,7 +398,7 @@ function TransactionsPageContent() {
                       categoryName={category?.name ?? "Unknown"}
                       subtitle={tx.notes || tx.date}
                       dateLabel={formatDateWithPreference(tx.date, dateFormat)}
-                      isIncome={isIncome}
+                      type={tx.type}
                       amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
                       onOpen={() => openDetail(tx)}
                       actions={

@@ -276,6 +276,7 @@ export default function MonthlyPage() {
                               {(txByMonth[key] ?? []).slice(0, 3).map((tx) => {
                                 const cat = getCategoryById(tx.categoryId);
                                 const isIncome = tx.type === "income";
+                                const isTransfer = tx.type === "transfer";
                                 return (
                                   <li
                                     key={tx.id}
@@ -306,10 +307,14 @@ export default function MonthlyPage() {
                                     <span
                                       className={cn(
                                         "min-w-0 w-full text-left tabular-nums [overflow-wrap:anywhere] sm:max-w-[45%] sm:shrink sm:text-right",
-                                        isIncome ? "font-medium text-success" : ""
+                                        isIncome
+                                          ? "font-medium text-success"
+                                          : isTransfer
+                                            ? "font-medium text-blue-700"
+                                            : ""
                                       )}
                                     >
-                                      {isIncome ? "+" : "−"}{" "}
+                                      {isIncome ? "+" : isTransfer ? "↔" : "−"}{" "}
                                       {formatCurrency(Math.abs(tx.amount), currency)}
                                     </span>
                                   </li>

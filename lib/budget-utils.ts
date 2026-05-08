@@ -19,7 +19,7 @@ export function getMonthTotals(transactions: Transaction[]) {
     if (tx.type === "income") {
       byMonth[key].income += Math.abs(tx.amount);
       byMonth[key].balance += Math.abs(tx.amount);
-    } else {
+    } else if (tx.type === "expense") {
       byMonth[key].expenses += Math.abs(tx.amount);
       byMonth[key].balance -= Math.abs(tx.amount);
     }

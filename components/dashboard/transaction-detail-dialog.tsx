@@ -44,6 +44,7 @@ export function TransactionDetailDialog({
 
   const category = transaction ? getCategoryById(transaction.categoryId) : null;
   const isIncome = transaction?.type === "income";
+  const isTransfer = transaction?.type === "transfer";
 
   const handleClose = () => {
     setRuleDialogOpen(false);
@@ -89,7 +90,11 @@ export function TransactionDetailDialog({
       <DialogContent
         className={cn(
           "sm:max-w-md",
-          isIncome ? "border-l-4 border-l-green-500" : "border-l-4 border-l-destructive"
+          isIncome
+            ? "border-l-4 border-l-green-500"
+            : isTransfer
+              ? "border-l-4 border-l-blue-500"
+              : "border-l-4 border-l-destructive"
         )}
       >
         <DialogHeader>
@@ -97,7 +102,11 @@ export function TransactionDetailDialog({
             <span
               className={cn(
                 "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium",
-                isIncome ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+                isIncome
+                  ? "bg-success/15 text-success"
+                  : isTransfer
+                    ? "bg-blue-500/10 text-blue-600"
+                    : "bg-muted text-muted-foreground"
               )}
             >
               {category?.name?.slice(0, 1) ?? "?"}
@@ -111,7 +120,7 @@ export function TransactionDetailDialog({
             <span
               className={cn(
                 "text-xl font-semibold",
-                isIncome ? "text-success" : "text-foreground"
+                isIncome ? "text-success" : isTransfer ? "text-blue-700" : "text-foreground"
               )}
             >
               {formatCurrencyWithSign(transaction.amount, currency)}
@@ -129,10 +138,16 @@ export function TransactionDetailDialog({
                 "text-xs",
                 isIncome
                   ? "bg-success/15 text-success border-success/30"
-                  : "bg-muted"
+                  : isTransfer
+                    ? "bg-blue-500/10 text-blue-700 border-blue-500/30"
+                    : "bg-muted"
               )}
             >
-              {transaction.type === "income" ? "Income" : "Expense"}
+              {transaction.type === "income"
+                ? "Income"
+                : transaction.type === "transfer"
+                  ? "Transfer"
+                  : "Expense"}
             </Badge>
           </div>
           <div className="flex items-center justify-between gap-4">

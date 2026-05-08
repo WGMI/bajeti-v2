@@ -29,7 +29,7 @@ function rowToTransaction(row: TransactionRow) {
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
-    type: row.type as "income" | "expense",
+    type: row.type as CategoryType,
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
   };
@@ -45,7 +45,7 @@ function normalizeForHash(text: string): string {
 
 type BulkItemParsed = {
   message: string;
-  type: "income" | "expense" | "neither";
+  type: "income" | "expense" | "transfer" | "neither";
   amount: number;
   date: string;
   fee: number;
@@ -193,7 +193,7 @@ export async function POST(request: Request) {
         // Skip creating a transaction for invalid parse results.
         let skipReason: string | null = null;
         if (parsed.type === "neither") {
-          skipReason = "Message did not match an income or expense transaction";
+          skipReason = "Message did not match an income, expense, or transfer transaction";
         } else if (parsed.amount <= 0) {
           skipReason = "Parsed transaction amount is missing or invalid";
         } else if (!parsed.date) {
@@ -231,7 +231,7 @@ export async function POST(request: Request) {
         const rawMessageHash = sha256(normalizeForHash(parsed.message));
         const smsIdempotencyKey = sha256(
           buildSmsIdempotencyKey({
-            type: parsed.type as "income" | "expense",
+            type: parsed.type as CategoryType,
             amount: parsed.amount,
             date: parsed.date,
             transactionRef: parsed.transactionRef,

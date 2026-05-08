@@ -62,15 +62,19 @@ export async function GET() {
       category_name: string;
     }[];
 
-    return NextResponse.json({
-      rules: rows.map((row) => ({
-        id: row.id,
-        counterpartyKey: row.counterparty_key,
-        transactionType: row.transaction_type as CategoryType,
-        categoryId: row.category_id,
-        categoryName: row.category_name,
-      })),
+    const rules = rows.map((row) => ({
+      id: row.id,
+      counterpartyKey: row.counterparty_key,
+      transactionType: row.transaction_type as CategoryType,
+      categoryId: row.category_id,
+      categoryName: row.category_name,
+    }));
+    console.log("[GET /api/counterparty-rules] rules snapshot", {
+      userId,
+      count: rules.length,
+      rules,
     });
+    return NextResponse.json({ rules });
   } catch (e) {
     console.error("[GET /api/counterparty-rules]", e);
     return NextResponse.json(
@@ -103,7 +107,9 @@ export async function POST(request: Request) {
       typeof counterpartyKeyRaw !== "string" ||
       typeof categoryId !== "string" ||
       !categoryId ||
-      (transactionType !== "income" && transactionType !== "expense")
+      (transactionType !== "income" &&
+        transactionType !== "expense" &&
+        transactionType !== "transfer")
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }

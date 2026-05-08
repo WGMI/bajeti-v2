@@ -63,7 +63,9 @@ export async function PATCH(
       typeof counterpartyKeyRaw !== "string" ||
       typeof categoryId !== "string" ||
       !categoryId ||
-      (transactionType !== "income" && transactionType !== "expense")
+      (transactionType !== "income" &&
+        transactionType !== "expense" &&
+        transactionType !== "transfer")
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }

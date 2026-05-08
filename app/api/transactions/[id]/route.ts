@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
+import type { CategoryType } from "@/lib/budget-types";
 
 type TransactionRow = {
   id: string;
@@ -21,7 +22,7 @@ function rowToTransaction(row: TransactionRow) {
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
-    type: row.type as "income" | "expense",
+    type: row.type as CategoryType,
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
   };
@@ -44,7 +45,7 @@ export async function PATCH(
       !categoryId ||
       !date ||
       !type ||
-      !["income", "expense"].includes(type)
+      !["income", "expense", "transfer"].includes(type)
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }

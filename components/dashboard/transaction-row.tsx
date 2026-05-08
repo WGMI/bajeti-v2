@@ -9,7 +9,7 @@ export type TransactionRowProps = {
   categoryName: string;
   subtitle: string;
   dateLabel: string;
-  isIncome: boolean;
+  type: "income" | "expense" | "transfer";
   amountFormatted: string;
   actions: ReactNode;
   onOpen: () => void;
@@ -20,16 +20,22 @@ export function TransactionRow({
   categoryName,
   subtitle,
   dateLabel,
-  isIncome,
+  type,
   amountFormatted,
   actions,
   onOpen,
 }: TransactionRowProps) {
+  const isIncome = type === "income";
+  const isTransfer = type === "transfer";
   const avatar = (
     <div
       className={cn(
         "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-        isIncome ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+        isIncome
+          ? "bg-success/15 text-success"
+          : isTransfer
+            ? "bg-blue-500/10 text-blue-600"
+            : "bg-muted text-muted-foreground"
       )}
     >
       <span className="text-sm font-medium">{categoryInitial}</span>
@@ -41,10 +47,14 @@ export function TransactionRow({
       variant="secondary"
       className={cn(
         "w-fit text-xs",
-        isIncome ? "bg-success/15 text-success border-success/30" : "bg-muted"
+        isIncome
+          ? "bg-success/15 text-success border-success/30"
+          : isTransfer
+            ? "bg-blue-500/10 text-blue-700 border-blue-500/30"
+            : "bg-muted"
       )}
     >
-      {isIncome ? "Income" : "Expense"}
+      {isIncome ? "Income" : isTransfer ? "Transfer" : "Expense"}
     </Badge>
   );
 
@@ -52,7 +62,7 @@ export function TransactionRow({
     <span
       className={cn(
         "block font-semibold text-right tabular-nums [overflow-wrap:anywhere]",
-        isIncome ? "text-success" : "text-foreground"
+        isIncome ? "text-success" : isTransfer ? "text-blue-700" : "text-foreground"
       )}
     >
       {amountFormatted}
@@ -67,7 +77,7 @@ export function TransactionRow({
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
       className={cn(
         "min-w-0 max-w-full cursor-pointer rounded-r border-b border-border/50 border-l-[3px] pb-4 pl-3 pr-1 transition-colors last:border-b-0 last:pb-0 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        isIncome ? "border-l-green-500" : "border-l-red-500"
+        isIncome ? "border-l-green-500" : isTransfer ? "border-l-blue-500" : "border-l-red-500"
       )}
     >
       {/* Stacked layout: avoids horizontal squeeze from amount + long currency strings */}

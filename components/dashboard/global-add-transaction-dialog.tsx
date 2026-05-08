@@ -11,7 +11,7 @@ export function GlobalAddTransactionDialog() {
 
   const addParam = searchParams.get("add");
   const isAddTransaction =
-    addParam === "income" || addParam === "expense";
+    addParam === "income" || addParam === "expense" || addParam === "transfer";
   const initialType: CategoryType | null = isAddTransaction ? addParam : null;
 
   const open = isAddTransaction;

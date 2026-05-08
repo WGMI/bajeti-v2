@@ -8,6 +8,7 @@ import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
+import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string };
 type TransactionRow = {
@@ -28,7 +29,7 @@ function transactionJson(row: TransactionRow) {
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
-    type: row.type as "income" | "expense",
+    type: row.type as CategoryType,
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
   };
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
     // Skip creating a transaction for invalid parse results and inform client why.
     let skipReason: string | null = null;
     if (parsed.type === "neither") {
-      skipReason = "Message did not match an income or expense transaction";
+      skipReason = "Message did not match an income, expense, or transfer transaction";
     } else if (parsed.amount <= 0) {
       skipReason = "Parsed transaction amount is missing or invalid";
     } else if (!parsed.date) {
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
     const rawMessageHash = sha256(normalizeForHash(parsed.message));
     const smsIdempotencyKey = sha256(
       buildSmsIdempotencyKey({
-        type: parsed.type as "income" | "expense",
+        type: parsed.type as CategoryType,
         amount: parsed.amount,
         date: parsed.date,
         transactionRef: parsed.transactionRef,

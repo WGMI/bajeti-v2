@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 import { createHash } from "crypto";
+import type { CategoryType } from "@/lib/budget-types";
 
 type TransactionRow = {
   id: string;
@@ -27,7 +28,7 @@ function rowToTransaction(row: TransactionRow) {
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
-    type: row.type as "income" | "expense",
+    type: row.type as CategoryType,
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
   };
@@ -53,12 +54,15 @@ export async function GET(request: Request) {
       MAX_LIMIT
     );
     const cursor = searchParams.get("cursor");
-    const typeFilter = searchParams.get("type"); // "income" | "expense" or omit
+    const typeFilter = searchParams.get("type"); // "income" | "expense" | "transfer" or omit
     const dateFrom = searchParams.get("dateFrom"); // YYYY-MM-DD
     const dateTo = searchParams.get("dateTo"); // YYYY-MM-DD
     const search = searchParams.get("search")?.trim() || null;
     const usePagination = cursor != null || limitParam != null;
-    const validType = typeFilter === "income" || typeFilter === "expense" ? typeFilter : null;
+    const validType =
+      typeFilter === "income" || typeFilter === "expense" || typeFilter === "transfer"
+        ? typeFilter
+        : null;
 
     const typeCond = validType ? sql`type = ${validType}::category_type` : sql`true`;
     const dateFromCond = dateFrom ? sql`date >= ${dateFrom}::date` : sql`true`;
@@ -207,7 +211,7 @@ export async function POST(request: Request) {
       !categoryId ||
       !date ||
       !type ||
-      !["income", "expense"].includes(type)
+      !["income", "expense", "transfer"].includes(type)
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }

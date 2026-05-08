@@ -27,7 +27,8 @@ function buildSampleAmount(counterpartyKey: string, transactionType: CategoryTyp
   const base = 500 + (seed % 9500);
   const cents = (seed % 100) / 100;
   const amount = Math.round((base + cents) * 100) / 100;
-  return transactionType === "income" ? amount : -amount;
+  if (transactionType === "income" || transactionType === "transfer") return amount;
+  return -amount;
 }
 
 function buildSampleSms(
@@ -38,6 +39,9 @@ function buildSampleSms(
 ): string {
   if (transactionType === "income") {
     return `Confirmed. You have received ${amountText} from ${counterpartyLabel} on ${dateText}.`;
+  }
+  if (transactionType === "transfer") {
+    return `Confirmed. You have transferred ${amountText} to ${counterpartyLabel} on ${dateText}.`;
   }
   return `Confirmed. You have paid ${amountText} to ${counterpartyLabel} on ${dateText}.`;
 }

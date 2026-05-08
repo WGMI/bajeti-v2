@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
+import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string; is_default: boolean };
 
@@ -9,7 +10,7 @@ function rowToCategory(row: CategoryRow) {
   return {
     id: row.id,
     name: row.name,
-    type: row.type as "income" | "expense",
+    type: row.type as CategoryType,
     isDefault: row.is_default,
   };
 }
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { name, type, isDefault = false } = body;
-    if (!name || !type || !["income", "expense"].includes(type)) {
+    if (!name || !type || !["income", "expense", "transfer"].includes(type)) {
       return NextResponse.json({ error: "Invalid name or type" }, { status: 400 });
     }
     const rows = await sql`

@@ -8,14 +8,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, TrendingUp, TrendingDown, Tags } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, ArrowLeftRight, Tags } from "lucide-react";
 
 export function FloatingActionButton() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const openAddTransaction = (type: "income" | "expense") => {
+  const openAddTransaction = (type: "income" | "expense" | "transfer") => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("add", type);
     router.push(`${pathname}?${params.toString()}`);
@@ -41,6 +41,10 @@ export function FloatingActionButton() {
           <DropdownMenuItem onClick={() => openAddTransaction("expense")}>
             <TrendingDown className="h-4 w-4 mr-2" />
             Add expense
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openAddTransaction("transfer")}>
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Add transfer
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => router.push("/dashboard/categories?add=1")}>
             <Tags className="h-4 w-4 mr-2" />

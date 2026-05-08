@@ -29,7 +29,10 @@ interface CategoryFormDialogProps {
 
 function getInitialValues(editingCategory: Category | null | undefined) {
   if (editingCategory) {
-    return { name: editingCategory.name, type: editingCategory.type as "income" | "expense" };
+    return {
+      name: editingCategory.name,
+      type: editingCategory.type as "income" | "expense" | "transfer",
+    };
   }
   return { name: "", type: "expense" as const };
 }
@@ -45,7 +48,7 @@ function CategoryFormFields({
   const isEdit = !!editingCategory;
   const initial = getInitialValues(editingCategory);
   const [name, setName] = useState(initial.name);
-  const [type, setType] = useState<"income" | "expense">(initial.type);
+  const [type, setType] = useState<"income" | "expense" | "transfer">(initial.type);
 
   const isDuplicateName = (trimmed: string) => {
     const lower = trimmed.toLowerCase();
@@ -61,10 +64,10 @@ function CategoryFormFields({
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<{
     name: string;
-    type: "income" | "expense";
+    type: "income" | "expense" | "transfer";
   } | null>(null);
 
-  const doSubmit = async (payload: { name: string; type: "income" | "expense" }) => {
+  const doSubmit = async (payload: { name: string; type: "income" | "expense" | "transfer" }) => {
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -119,14 +122,15 @@ function CategoryFormFields({
         <Label htmlFor="cat-type">Type</Label>
         <Select
           value={type}
-          onValueChange={(v) => setType(v as "income" | "expense")}
+          onValueChange={(v) => setType(v as "income" | "expense" | "transfer")}
         >
           <SelectTrigger id="cat-type">
-            {type === "income" ? "Income" : "Expense"}
+            {type === "income" ? "Income" : type === "expense" ? "Expense" : "Transfer"}
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="expense">Expense</SelectItem>
             <SelectItem value="income">Income</SelectItem>
+            <SelectItem value="transfer">Transfer</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -1,4 +1,4 @@
-export type SmsType = "income" | "expense" | "neither";
+export type SmsType = "income" | "expense" | "transfer" | "neither";
 
 /** Where the transaction `date` should come from when both SMS text and device time exist. */
 export type SmsTransactionDateSource = "message" | "received_at";
@@ -255,6 +255,23 @@ export function extractSmsCounterpartyLabel(
   if (type === "neither") return null;
   const m = message.replace(/\s+/g, " ").trim();
 
+  if (type === "transfer") {
+    const credited = m.match(
+      /\bcredited\s+to\s+(?:\+?254\d{9}\s+|0\d{9}\s+)?(.+?)(?=\.\s*Ref(?:\.|\s)|$)/i
+    );
+    if (credited?.[1]) return trimCounterpartyLabel(credited[1]);
+    const from = m.match(new RegExp(`\\bfrom\\s+(.+?)(${ON_DATE_CHUNK})`, "i"));
+    if (from?.[1]) return trimCounterpartyLabel(from[1]);
+    const sent = m.match(
+      new RegExp(
+        `\\bsent\\s+to\\s+(.+?)(?=${EXPENSE_COUNTERPARTY_BOUNDARY})`,
+        "i"
+      )
+    );
+    if (sent?.[1]) return trimCounterpartyLabel(sent[1]);
+    return null;
+  }
+
   if (type === "expense") {
     // Card auth pattern, e.g.
     // "Auth for card 4478..0465 at SPOTIFY AB on 2025-10-11 19:15:45 Ref:..."
@@ -374,6 +391,7 @@ export function parseSMS(
   // Contextual keyword rules
   const smsRules: Record<string, string[]> = {
     income: ["received"],
+    transfer: ["has been credited to", "credited to"],
     expense: [
       "credited to",
       "drawn from",
@@ -390,15 +408,25 @@ export function parseSMS(
     transaction: ["Transaction cost", "charges", "Interest charged"],
   };
 
+  const lowerMessage = message.toLowerCase();
+  const looksLikeTransfer =
+    /\bhas\s+been\s+credited\s+to\b/i.test(message) ||
+    /\bcredited\s+to\s+(?:\+?254\d{9}\b|0\d{9}\b)/i.test(message) ||
+    /\byou\s+have\s+received\s+(?:ksh|kshs|kes)[\d\s,\.]+\s+from\s+equity\s+bulk\s+account\b/i.test(
+      message
+    );
+  if (looksLikeTransfer) {
+    type = "transfer";
+  }
+
   for (const [ruleType, keywords] of Object.entries(smsRules)) {
-    const lower = message.toLowerCase();
-    const matched = keywords.filter((kw) => lower.includes(kw.toLowerCase()));
+    const matched = keywords.filter((kw) => lowerMessage.includes(kw.toLowerCase()));
     if (matched.length) {
       console.log("[SMS parse] rule:", ruleType, "keywords matched:", matched);
     }
     if (
       type === "neither" &&
-      keywords.some((kw) => lower.includes(kw.toLowerCase()))
+      keywords.some((kw) => lowerMessage.includes(kw.toLowerCase()))
     ) {
       if (ruleType !== "transaction") {
         type = ruleType as SmsType;

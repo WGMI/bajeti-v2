@@ -44,6 +44,7 @@ function getInitialValues(
     return {
       amount: String(Math.abs(editingTransaction.amount)),
       categoryId: editingTransaction.categoryId,
+      type: editingTransaction.type,
       date: editingTransaction.date.slice(0, 10),
       notes: editingTransaction.notes,
     };
@@ -54,6 +55,7 @@ function getInitialValues(
   return {
     amount: "",
     categoryId: firstOfType,
+    type: typeLock ?? "expense",
     date: new Date().toISOString().slice(0, 10),
     notes: "",
   };
@@ -80,16 +82,13 @@ function TransactionFormFields({
   const initial = getInitialValues(editingTransaction, typeLock, categories);
   const [amount, setAmount] = useState(initial.amount);
   const [categoryId, setCategoryId] = useState(initial.categoryId);
+  const [type, setType] = useState<CategoryType>(initial.type);
   const [date, setDate] = useState(initial.date);
   const [notes, setNotes] = useState(initial.notes);
 
   const selectedCategory = categoryId ? getCategoryById(categoryId) : null;
-  // When a category is selected, show categories of that type (so after "Use from SMS" the dropdown matches).
-  const relevantCategories = selectedCategory
-    ? categories.filter((c) => c.type === selectedCategory.type)
-    : typeLock
-      ? categories.filter((c) => c.type === typeLock)
-      : categories;
+  const effectiveType = isEdit ? type : (selectedCategory?.type ?? typeLock ?? type);
+  const relevantCategories = categories.filter((c) => c.type === effectiveType);
 
   const [showPasteSms, setShowPasteSms] = useState(false);
   const [smsText, setSmsText] = useState("");
@@ -142,7 +141,7 @@ function TransactionFormFields({
     console.log("[SMS dialog] parsed result.type:", result.type);
 
     if (result.type === "neither") {
-      setSmsParseFeedback("This SMS did not look like an income or expense transaction.");
+      setSmsParseFeedback("This SMS did not look like an income, expense, or transfer transaction.");
       return;
     }
     if (result.amount <= 0) {
@@ -168,7 +167,7 @@ function TransactionFormFields({
       })
     );
     // Set category from SMS type, but prefer an explicit counterparty rule match when present.
-    if (result.type === "income" || result.type === "expense") {
+    if (result.type === "income" || result.type === "expense" || result.type === "transfer") {
       let matchedCategoryId: string | null = null;
       if (result.counterpartyKey) {
         try {
@@ -210,6 +209,10 @@ function TransactionFormFields({
       );
       if (categoryFromSms) {
         setCategoryId(categoryFromSms);
+        if (isEdit) {
+          const nextType = categories.find((c) => c.id === categoryFromSms)?.type;
+          if (nextType) setType(nextType);
+        }
       } else {
         console.warn(
           "[SMS dialog] no category found for type:",
@@ -234,27 +237,27 @@ function TransactionFormFields({
     if (Number.isNaN(num) || num <= 0) return;
     const category = getCategoryById(categoryId);
     if (!category) return;
-    const type = category.type;
+    const txType = isEdit ? type : category.type;
     setSubmitError(null);
     setSubmitMessage(null);
     setSubmitting(true);
     try {
       if (isEdit && editingTransaction) {
         const updated = await updateTransaction(editingTransaction.id, {
-          amount: type === "expense" ? -num : num,
+          amount: txType === "expense" ? -num : num,
           categoryId,
           date,
           notes,
-          type,
+          type: txType,
         });
         onUpdated?.(updated);
       } else {
         const created = await addTransaction({
-          amount: type === "expense" ? -num : num,
+          amount: txType === "expense" ? -num : num,
           categoryId,
           date,
           notes,
-          type,
+          type: txType,
           idempotencyKey: smsIdempotencyKey ?? undefined,
         });
         const alreadyExists = transactions.some((t) => t.id === created.id);
@@ -432,6 +435,32 @@ function TransactionFormFields({
           required
         />
       </div>
+      {isEdit && (
+        <div className="space-y-2">
+          <Label htmlFor="transaction-type">Type</Label>
+          <Select
+            value={type}
+            onValueChange={(value) => {
+              const nextType = value as CategoryType;
+              setType(nextType);
+              const currentCategory = getCategoryById(categoryId);
+              if (!currentCategory || currentCategory.type !== nextType) {
+                const firstOfType = categories.find((c) => c.type === nextType)?.id ?? "";
+                setCategoryId(firstOfType);
+              }
+            }}
+          >
+            <SelectTrigger id="transaction-type">
+              {type === "income" ? "Income" : type === "expense" ? "Expense" : "Transfer"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="income">Income</SelectItem>
+              <SelectItem value="expense">Expense</SelectItem>
+              <SelectItem value="transfer">Transfer</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="category">Category</Label>
         <Select value={categoryId} onValueChange={setCategoryId}>
@@ -507,13 +536,27 @@ export function TransactionFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`sm:max-w-md ${typeLock === "expense" ? "border-l-4 border-l-destructive" : ""}`}
+        className={`sm:max-w-md ${
+          typeLock === "expense"
+            ? "border-l-4 border-l-destructive"
+            : typeLock === "transfer"
+              ? "border-l-4 border-l-blue-500"
+              : ""
+        }`}
       >
         <DialogHeader>
           <DialogTitle>
             {isEdit
               ? "Edit transaction"
-              : `Add ${typeLock === "income" ? "income" : typeLock === "expense" ? "expense" : "transaction"}`}
+              : `Add ${
+                  typeLock === "income"
+                    ? "income"
+                    : typeLock === "expense"
+                      ? "expense"
+                      : typeLock === "transfer"
+                        ? "transfer"
+                        : "transaction"
+                }`}
           </DialogTitle>
         </DialogHeader>
         {open && (

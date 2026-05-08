@@ -59,7 +59,12 @@ export function CounterpartySavedRules({
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredRules = normalizedSearch
     ? rules.filter((rule) => {
-        const typeLabel = rule.transactionType === "income" ? "income" : "expense";
+        const typeLabel =
+          rule.transactionType === "income"
+            ? "income"
+            : rule.transactionType === "expense"
+              ? "expense"
+              : "transfer";
         return (
           rule.counterpartyKey.toLowerCase().includes(normalizedSearch) ||
           rule.categoryName.toLowerCase().includes(normalizedSearch) ||
@@ -247,7 +252,12 @@ export function CounterpartySavedRules({
             {filteredRules.map((rule) => {
               const split = splitScopedCounterpartyKey(rule.counterpartyKey);
               const typeValue = typeEdits[rule.id] ?? rule.transactionType;
-              const typeLabel = typeValue === "income" ? "Income" : "Expense";
+              const typeLabel =
+                typeValue === "income"
+                  ? "Income"
+                  : typeValue === "expense"
+                    ? "Expense"
+                    : "Transfer";
               const cats = categories.filter((c) => c.type === typeValue);
               const catId = categoryEdits[rule.id] ?? rule.categoryId;
               const keyValue = counterpartyEdits[rule.id] ?? split.baseKey;
@@ -333,6 +343,7 @@ export function CounterpartySavedRules({
                         <SelectContent>
                           <SelectItem value="expense">Expense</SelectItem>
                           <SelectItem value="income">Income</SelectItem>
+                          <SelectItem value="transfer">Transfer</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

@@ -1,4 +1,4 @@
-export type CategoryType = "income" | "expense";
+export type CategoryType = "income" | "expense" | "transfer";
 
 export interface Category {
   id: string;
@@ -28,5 +28,6 @@ export const DEFAULT_CATEGORIES: Omit<Category, "id">[] = [
   { name: "Savings", type: "expense", isDefault: true },
   { name: "Salary", type: "income", isDefault: true },
   { name: "Other Income", type: "income", isDefault: true },
+  { name: "Transfer", type: "transfer", isDefault: true },
   { name: "Other", type: "expense", isDefault: true },
 ];

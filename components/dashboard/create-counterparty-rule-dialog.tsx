@@ -118,7 +118,12 @@ export function CreateCounterpartyRuleDialog({
 
   if (!transaction) return null;
 
-  const typeLabel = transaction.type === "income" ? "income" : "expense";
+  const typeLabel =
+    transaction.type === "income"
+      ? "income"
+      : transaction.type === "expense"
+        ? "expense"
+        : "transfer";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

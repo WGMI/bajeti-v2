@@ -80,7 +80,6 @@ export function RecentTransactionsCard() {
             <ul className="min-w-0 space-y-4">
               {recent.map((tx) => {
                 const category = getCategoryById(tx.categoryId);
-                const isIncome = tx.type === "income";
                 return (
                   <TransactionRow
                     key={tx.id}
@@ -88,7 +87,7 @@ export function RecentTransactionsCard() {
                     categoryName={category?.name ?? "Unknown"}
                     subtitle={tx.notes || tx.date}
                     dateLabel={formatDateWithPreference(tx.date, dateFormat)}
-                    isIncome={isIncome}
+                    type={tx.type}
                     amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
                     onOpen={() => openDetail(tx)}
                     actions={

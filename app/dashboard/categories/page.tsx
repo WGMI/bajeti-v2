@@ -92,19 +92,18 @@ function CategoriesPageContent() {
 
   const incomeCategories = categories.filter((c) => c.type === "income");
   const expenseCategories = categories.filter((c) => c.type === "expense");
+  const transferCategories = categories.filter((c) => c.type === "transfer");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Categories</h1>
-          <p className="text-muted-foreground">
-            Manage income and expense categories.
-          </p>
+          <p className="text-muted-foreground">Manage income, expense, and transfer categories.</p>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-medium flex items-center gap-2">
@@ -184,6 +183,48 @@ function CategoriesPageContent() {
               ))}
               {expenseCategories.length === 0 && (
                 <li className="text-sm text-muted-foreground py-2">No expense categories.</li>
+              )}
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <span className="rounded-full bg-blue-500/10 p-1.5 text-blue-600">↔</span>
+              Transfer
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="min-w-0 space-y-2">
+              {transferCategories.map((cat) => (
+                <li
+                  key={cat.id}
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                >
+                  <span className="min-w-0 truncate font-medium">{cat.name}</span>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openEdit(cat)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => handleDeleteClick(cat)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+              {transferCategories.length === 0 && (
+                <li className="text-sm text-muted-foreground py-2">No transfer categories.</li>
               )}
             </ul>
           </CardContent>

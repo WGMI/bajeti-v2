@@ -175,7 +175,12 @@ export function CounterpartyMapSuggestions({
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
         {suggestions.map((s) => {
-          const typeLabel = s.transactionType === "income" ? "Income" : "Expense";
+          const typeLabel =
+            s.transactionType === "income"
+              ? "Income"
+              : s.transactionType === "expense"
+                ? "Expense"
+                : "Transfer";
           const cats = categories.filter((c) => c.type === s.transactionType);
           const catId = categoryChoice[s.counterpartyKey] ?? "";
           return (

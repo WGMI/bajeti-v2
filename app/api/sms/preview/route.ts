@@ -5,6 +5,7 @@ import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
+import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string };
 
@@ -13,7 +14,7 @@ type PreviewTransaction = {
   categoryId: string | null;
   date: string;
   notes: string;
-  type: "income" | "expense";
+  type: CategoryType;
   smsCounterparty: string | null;
   smsCounterpartyKey: string | null;
 };
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
 
     let skipReason: string | null = null;
     if (parsed.type === "neither") {
-      skipReason = "Message did not match an income or expense transaction";
+      skipReason = "Message did not match an income, expense, or transfer transaction";
     } else if (parsed.amount <= 0) {
       skipReason = "Parsed transaction amount is missing or invalid";
     } else if (!parsed.date) {
@@ -96,13 +97,14 @@ export async function POST(request: Request) {
     }
 
     const category = await resolveCategoryForSmsIngestion(userId, parsed, categoryRows);
-    const transactionType = parsed.type === "income" || parsed.type === "expense"
+    const transactionType =
+      parsed.type === "income" || parsed.type === "expense" || parsed.type === "transfer"
       ? parsed.type
       : null;
     if (!transactionType) {
       return NextResponse.json({
         status: "ignored",
-        reason: "Message did not match an income or expense transaction",
+        reason: "Message did not match an income, expense, or transfer transaction",
         parsed: parsedForApi,
         preview: null,
       });
