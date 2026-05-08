@@ -350,6 +350,38 @@ function extractTransactionRef(message: string): string | null {
 }
 
 /**
+ * Extract stable reference-like tokens used to link two legs of a transfer.
+ * Includes common transaction IDs and account-like numeric references.
+ */
+export function extractTransferReferenceTokens(messageRaw: string): string[] {
+  const message = messageRaw.replace(/\s+/g, " ").trim();
+  if (!message) return [];
+
+  const tokens = new Set<string>();
+  const push = (value: string | null | undefined) => {
+    const normalized = (value ?? "").trim().toUpperCase();
+    if (normalized.length >= 6) tokens.add(normalized);
+  };
+
+  // Reuse primary transaction reference extraction.
+  push(extractTransactionRef(message));
+
+  // Explicit labeled refs: "Ref. XYZ", "MPESA Ref. XYZ", "Reference: XYZ"
+  for (const match of message.matchAll(
+    /\b(?:mpesa\s+ref|ref(?:erence)?|txn(?:\s*id)?|transaction(?:\s*id)?)\.?\s*[:#-]?\s*([A-Z0-9-]{6,24})\b/gi
+  )) {
+    push(match[1]);
+  }
+
+  // Account/phone-like identifiers often present in transfer messages.
+  for (const match of message.matchAll(/\b(?:\+?254\d{9}|0\d{9}|\d{10,16})\b/g)) {
+    push(match[0]);
+  }
+
+  return [...tokens];
+}
+
+/**
  * Web equivalent of the Android parseSMS helper.
  * Takes a raw SMS body and returns a normalized parse result.
  */
