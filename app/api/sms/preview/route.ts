@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
+import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
@@ -18,6 +19,26 @@ type PreviewTransaction = {
   smsCounterparty: string | null;
   smsCounterpartyKey: string | null;
 };
+
+async function resolveEffectiveTransactionType(
+  userId: string,
+  parsed: ReturnType<typeof parseSMS>
+): Promise<CategoryType | "neither"> {
+  if (parsed.type === "neither" || !parsed.counterpartyKey) return parsed.type;
+  const candidateKeys = candidateCounterpartyRuleKeys(parsed.counterpartyKey, parsed.message ?? "");
+  if (candidateKeys.length === 0) return parsed.type;
+  const ruleRows = await sql`
+    SELECT 1
+    FROM counterparty_category_rules
+    WHERE user_id = ${userId}
+      AND transaction_type = ${"transfer"}::category_type
+      AND counterparty_key IN (
+        SELECT jsonb_array_elements_text(${JSON.stringify(candidateKeys)}::jsonb)
+      )
+    LIMIT 1
+  `;
+  return ruleRows.length > 0 ? "transfer" : parsed.type;
+}
 
 /**
  * POST /api/sms/preview
@@ -55,9 +76,10 @@ export async function POST(request: Request) {
       transactionDateSource,
     });
     const parsedForApi = smsParseResultForApi(parsed);
+    const effectiveType = await resolveEffectiveTransactionType(userId, parsed);
 
     let skipReason: string | null = null;
-    if (parsed.type === "neither") {
+    if (effectiveType === "neither") {
       skipReason = "Message did not match an income, expense, or transfer transaction";
     } else if (parsed.amount <= 0) {
       skipReason = "Parsed transaction amount is missing or invalid";
@@ -96,10 +118,14 @@ export async function POST(request: Request) {
       ` as CategoryRow[];
     }
 
-    const category = await resolveCategoryForSmsIngestion(userId, parsed, categoryRows);
+    const category = await resolveCategoryForSmsIngestion(
+      userId,
+      { ...parsed, type: effectiveType },
+      categoryRows
+    );
     const transactionType =
-      parsed.type === "income" || parsed.type === "expense" || parsed.type === "transfer"
-      ? parsed.type
+      effectiveType === "income" || effectiveType === "expense" || effectiveType === "transfer"
+      ? effectiveType
       : null;
     if (!transactionType) {
       return NextResponse.json({

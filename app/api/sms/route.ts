@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
+import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
@@ -21,6 +22,27 @@ type TransactionRow = {
   sms_counterparty: string | null;
   sms_counterparty_key: string | null;
 };
+
+async function resolveEffectiveTransactionType(
+  userId: string,
+  parsed: ReturnType<typeof parseSMS>
+): Promise<CategoryType | "neither"> {
+  const baseType = parsed.type as CategoryType | "neither";
+  if (baseType === "neither" || !parsed.counterpartyKey) return baseType;
+  const candidateKeys = candidateCounterpartyRuleKeys(parsed.counterpartyKey, parsed.message ?? "");
+  if (candidateKeys.length === 0) return baseType;
+  const ruleRows = await sql`
+    SELECT 1
+    FROM counterparty_category_rules
+    WHERE user_id = ${userId}
+      AND transaction_type = ${"transfer"}::category_type
+      AND counterparty_key IN (
+        SELECT jsonb_array_elements_text(${JSON.stringify(candidateKeys)}::jsonb)
+      )
+    LIMIT 1
+  `;
+  return ruleRows.length > 0 ? "transfer" : baseType;
+}
 
 function transactionJson(row: TransactionRow) {
   return {
@@ -81,9 +103,11 @@ export async function POST(request: Request) {
       transactionDateSource,
     });
 
+    const effectiveType = await resolveEffectiveTransactionType(userId, parsed);
+
     // Skip creating a transaction for invalid parse results and inform client why.
     let skipReason: string | null = null;
-    if (parsed.type === "neither") {
+    if (effectiveType === "neither") {
       skipReason = "Message did not match an income, expense, or transfer transaction";
     } else if (parsed.amount <= 0) {
       skipReason = "Parsed transaction amount is missing or invalid";
@@ -99,6 +123,7 @@ export async function POST(request: Request) {
         parsed: smsParseResultForApi(parsed),
       });
     }
+    const transactionType = effectiveType as CategoryType;
 
     // Ensure user has categories, then get first category of the parsed type
     let categoryRows = await sql`
@@ -123,14 +148,18 @@ export async function POST(request: Request) {
       ` as CategoryRow[];
     }
 
-    const category = await resolveCategoryForSmsIngestion(userId, parsed, categoryRows);
+    const category = await resolveCategoryForSmsIngestion(
+      userId,
+      { ...parsed, type: effectiveType },
+      categoryRows
+    );
     if (!category) {
       return NextResponse.json(
         {
-          error: `No ${parsed.type} category found for user`,
+          error: `No ${effectiveType} category found for user`,
           status: "ignored",
           transactionCreated: false,
-          reason: `No category found for parsed type: ${parsed.type}`,
+          reason: `No category found for parsed type: ${effectiveType}`,
           parsed: smsParseResultForApi(parsed),
         },
         { status: 400 }
@@ -140,7 +169,7 @@ export async function POST(request: Request) {
     const rawMessageHash = sha256(normalizeForHash(parsed.message));
     const smsIdempotencyKey = sha256(
       buildSmsIdempotencyKey({
-        type: parsed.type as CategoryType,
+        type: transactionType,
         amount: parsed.amount,
         date: parsed.date,
         transactionRef: parsed.transactionRef,
@@ -149,6 +178,7 @@ export async function POST(request: Request) {
     console.log("[POST /api/sms] dedupe key computed", {
       userId,
       parsedType: parsed.type,
+      effectiveType: transactionType,
       parsedAmount: parsed.amount,
       parsedDate: parsed.date,
       transactionRef: parsed.transactionRef,
@@ -197,7 +227,7 @@ export async function POST(request: Request) {
         ${category.id},
         ${parsed.date},
         ${parsed.message},
-        ${parsed.type}::category_type,
+        ${transactionType}::category_type,
         ${smsIdempotencyKey},
         ${rawMessageHash},
         ${parsed.counterparty},

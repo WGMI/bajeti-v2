@@ -20,6 +20,7 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
 import { parseSMS } from "@/lib/sms-parser";
+import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { useSettings } from "@/lib/settings-store";
 
@@ -182,11 +183,21 @@ function TransactionFormFields({
                 categoryId: string;
               }>;
             };
-            const match = (rulesData.rules ?? []).find(
-              (r) =>
-                r.transactionType === result.type &&
-                r.counterpartyKey === result.counterpartyKey
+            const candidateKeys = candidateCounterpartyRuleKeys(
+              result.counterpartyKey,
+              result.message
             );
+            const match =
+              (rulesData.rules ?? []).find(
+                (r) =>
+                  r.transactionType === "transfer" &&
+                  candidateKeys.includes(r.counterpartyKey)
+              ) ??
+              (rulesData.rules ?? []).find(
+                (r) =>
+                  r.transactionType === result.type &&
+                  candidateKeys.includes(r.counterpartyKey)
+              );
             matchedCategoryId = match?.categoryId ?? null;
           }
         } catch (e) {
@@ -195,6 +206,9 @@ function TransactionFormFields({
       }
 
       const firstOfType = categories.find((c) => c.type === result.type)?.id ?? null;
+      const matchedCategory = matchedCategoryId
+        ? categories.find((c) => c.id === matchedCategoryId)
+        : null;
       const categoryFromSms = matchedCategoryId ?? firstOfType;
       console.log(
         "[SMS dialog] setting category from SMS.",
@@ -209,10 +223,8 @@ function TransactionFormFields({
       );
       if (categoryFromSms) {
         setCategoryId(categoryFromSms);
-        if (isEdit) {
-          const nextType = categories.find((c) => c.id === categoryFromSms)?.type;
-          if (nextType) setType(nextType);
-        }
+        const nextType = matchedCategory?.type ?? (isEdit ? result.type : null);
+        if (nextType) setType(nextType);
       } else {
         console.warn(
           "[SMS dialog] no category found for type:",

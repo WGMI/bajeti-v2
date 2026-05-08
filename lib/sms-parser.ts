@@ -423,7 +423,6 @@ export function parseSMS(
   // Contextual keyword rules
   const smsRules: Record<string, string[]> = {
     income: ["received"],
-    transfer: ["has been credited to", "credited to"],
     expense: [
       "credited to",
       "drawn from",
@@ -439,17 +438,7 @@ export function parseSMS(
     ],
     transaction: ["Transaction cost", "charges", "Interest charged"],
   };
-
   const lowerMessage = message.toLowerCase();
-  const looksLikeTransfer =
-    /\bhas\s+been\s+credited\s+to\b/i.test(message) ||
-    /\bcredited\s+to\s+(?:\+?254\d{9}\b|0\d{9}\b)/i.test(message) ||
-    /\byou\s+have\s+received\s+(?:ksh|kshs|kes)[\d\s,\.]+\s+from\s+equity\s+bulk\s+account\b/i.test(
-      message
-    );
-  if (looksLikeTransfer) {
-    type = "transfer";
-  }
 
   for (const [ruleType, keywords] of Object.entries(smsRules)) {
     const matched = keywords.filter((kw) => lowerMessage.includes(kw.toLowerCase()));

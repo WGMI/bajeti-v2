@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
+import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
@@ -98,6 +99,27 @@ function extractParsedForResponse(parsed: ReturnType<typeof parseSMS>): BulkItem
   return smsParseResultForApi(parsed) as BulkItemParsed;
 }
 
+async function resolveEffectiveTransactionType(
+  userId: string,
+  parsed: ReturnType<typeof parseSMS>
+): Promise<CategoryType | "neither"> {
+  const baseType = parsed.type as CategoryType | "neither";
+  if (baseType === "neither" || !parsed.counterpartyKey) return baseType;
+  const candidateKeys = candidateCounterpartyRuleKeys(parsed.counterpartyKey, parsed.message ?? "");
+  if (candidateKeys.length === 0) return baseType;
+  const ruleRows = await sql`
+    SELECT 1
+    FROM counterparty_category_rules
+    WHERE user_id = ${userId}
+      AND transaction_type = ${"transfer"}::category_type
+      AND counterparty_key IN (
+        SELECT jsonb_array_elements_text(${JSON.stringify(candidateKeys)}::jsonb)
+      )
+    LIMIT 1
+  `;
+  return ruleRows.length > 0 ? "transfer" : baseType;
+}
+
 export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -189,10 +211,11 @@ export async function POST(request: Request) {
         });
 
         const parsedForResponse = extractParsedForResponse(parsed);
+        const effectiveType = await resolveEffectiveTransactionType(userId, parsed);
 
         // Skip creating a transaction for invalid parse results.
         let skipReason: string | null = null;
-        if (parsed.type === "neither") {
+        if (effectiveType === "neither") {
           skipReason = "Message did not match an income, expense, or transfer transaction";
         } else if (parsed.amount <= 0) {
           skipReason = "Parsed transaction amount is missing or invalid";
@@ -210,10 +233,11 @@ export async function POST(request: Request) {
           });
           continue;
         }
+        const transactionType = effectiveType as CategoryType;
 
         const category = (await resolveCategoryForSmsIngestion(
           userId,
-          parsed,
+          { ...parsed, type: transactionType },
           categoryRows
         )) as { id: string; type: CategoryType } | undefined;
 
@@ -222,7 +246,7 @@ export async function POST(request: Request) {
             index: i,
             status: "ignored",
             transactionCreated: false,
-            reason: `No category found for parsed type: ${parsed.type}`,
+            reason: `No category found for parsed type: ${effectiveType}`,
             parsed: parsedForResponse,
           });
           continue;
@@ -231,7 +255,7 @@ export async function POST(request: Request) {
         const rawMessageHash = sha256(normalizeForHash(parsed.message));
         const smsIdempotencyKey = sha256(
           buildSmsIdempotencyKey({
-            type: parsed.type as CategoryType,
+            type: transactionType,
             amount: parsed.amount,
             date: parsed.date,
             transactionRef: parsed.transactionRef,
@@ -277,7 +301,7 @@ export async function POST(request: Request) {
             ${category.id},
             ${parsed.date},
             ${parsed.message},
-            ${parsed.type}::category_type,
+            ${transactionType}::category_type,
             ${smsIdempotencyKey},
             ${rawMessageHash},
             ${parsed.counterparty},
