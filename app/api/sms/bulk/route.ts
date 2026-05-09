@@ -217,6 +217,9 @@ export async function POST(request: Request) {
         let skipReason: string | null = null;
         if (effectiveType === "neither") {
           skipReason = "Message did not match an income, expense, or transfer transaction";
+        } else if (effectiveType === "transfer") {
+          // Stopgap: prevent transfer-classified SMS from creating DB transactions.
+          skipReason = "Transfer messages are temporarily ignored";
         } else if (parsed.amount <= 0) {
           skipReason = "Parsed transaction amount is missing or invalid";
         } else if (!parsed.date) {

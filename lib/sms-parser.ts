@@ -405,8 +405,19 @@ export function parseSMS(
   const message = messageRaw.replace(/\s+/g, " ").trim();
   console.log("[SMS parse] normalized message (first 120 chars):", message.slice(0, 120));
 
-  // Early exit for cancelled transactions
-  if (message.toLowerCase().includes("cancelled")) {
+  // Early exit for cancelled transactions and informational Fuliza notices.
+  // Fuliza outstanding/charge reminders are not user-spend events.
+  const lowerMessage = message.toLowerCase();
+  const ignorePhrases = [
+    "fuliza m-pesa amount is",
+    "total fuliza m-pesa outstanding amount is",
+    "access fee charged",
+    "query charges",
+  ];
+  if (
+    lowerMessage.includes("cancelled") ||
+    ignorePhrases.some((phrase) => lowerMessage.includes(phrase))
+  ) {
     return {
       message,
       type: "neither",
@@ -438,8 +449,6 @@ export function parseSMS(
     ],
     transaction: ["Transaction cost", "charges", "Interest charged"],
   };
-  const lowerMessage = message.toLowerCase();
-
   for (const [ruleType, keywords] of Object.entries(smsRules)) {
     const matched = keywords.filter((kw) => lowerMessage.includes(kw.toLowerCase()));
     if (matched.length) {
