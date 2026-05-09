@@ -6,12 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, Loader2, Filter, Search } from "lucide-react";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
+import { SortButton } from "@/components/dashboard/sort-button";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { Category, CategoryType, Transaction } from "@/lib/budget-types";
+import {
+  compareNumber,
+  compareText,
+  nextSortState,
+  type SortState,
+  withSortDirection,
+} from "@/lib/sort-utils";
 import { TransactionFormDialog } from "@/components/dashboard/transaction-form-dialog";
 import { TransactionDetailDialog } from "@/components/dashboard/transaction-detail-dialog";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -43,6 +51,7 @@ type TransactionsResponse = {
 };
 
 type TypeFilter = "all" | "income" | "expense" | "transfer";
+type TransactionSortColumn = "category" | "notes" | "date" | "type" | "amount";
 
 function aggregateByCategory(
   txs: Transaction[],
@@ -106,6 +115,10 @@ function TransactionsPageContent() {
   const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
+  const [sort, setSort] = useState<SortState<TransactionSortColumn>>({
+    column: "date",
+    direction: "desc",
+  });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const showCategoryCharts = Boolean(dateFrom && dateTo);
   const [fullTotalIncome, setFullTotalIncome] = useState(0);
@@ -122,6 +135,29 @@ function TransactionsPageContent() {
 
   const hasActiveFilters =
     typeFilter !== "all" || dateFrom !== "" || dateTo !== "" || searchQuery !== "";
+
+  const sortedList = useMemo(() => {
+    return [...list].sort((a, b) => {
+      const aCategory = getCategoryById(a.categoryId)?.name ?? "";
+      const bCategory = getCategoryById(b.categoryId)?.name ?? "";
+      const comparison =
+        sort.column === "category"
+          ? compareText(aCategory, bCategory)
+          : sort.column === "notes"
+            ? compareText(a.notes, b.notes)
+            : sort.column === "date"
+              ? compareText(a.date, b.date)
+              : sort.column === "type"
+                ? compareText(a.type, b.type)
+                : compareNumber(a.amount, b.amount);
+
+      return withSortDirection(comparison, sort.direction);
+    });
+  }, [list, getCategoryById, sort]);
+
+  const handleSort = (column: TransactionSortColumn) => {
+    setSort((current) => nextSortState(current, column));
+  };
 
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
@@ -388,82 +424,127 @@ function TransactionsPageContent() {
                 No transactions yet. Use the + button to create one.
               </p>
             ) : (
-              <ul className="min-w-0 space-y-4">
-                {list.map((tx) => {
-                  const category = getCategoryById(tx.categoryId);
-                  return (
-                    <TransactionRow
-                      key={tx.id}
-                      categoryInitial={category?.name?.slice(0, 1) ?? "?"}
-                      categoryName={category?.name ?? "Unknown"}
-                      subtitle={tx.notes || tx.date}
-                      dateLabel={formatDateWithPreference(tx.date, dateFormat)}
-                      type={tx.type}
-                      amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
-                      onOpen={() => openDetail(tx)}
-                      actions={
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 touch-manipulation"
-                            onClick={() => openEdit(tx)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          {confirmingDeleteId === tx.id && !deletingId ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 touch-manipulation"
-                                onClick={() => setConfirmingDeleteId(null)}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 min-w-0 shrink gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
-                                onClick={async () => {
-                                  setDeletingId(tx.id);
-                                  try {
-                                    await handleDelete(tx.id);
-                                    setConfirmingDeleteId(null);
-                                  } finally {
-                                    setDeletingId(null);
-                                  }
-                                }}
-                              >
-                                Are you sure?
-                              </Button>
-                            </>
-                          ) : deletingId === tx.id ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 min-w-0 gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
-                              disabled
-                            >
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Deleting…
-                            </Button>
-                          ) : (
+              <div className="min-w-0">
+                <div className="mb-3 flex min-w-0 flex-wrap gap-1 md:grid md:grid-cols-[2.5rem_minmax(0,0.6fr)_minmax(0,7rem)_5.5rem_minmax(0,7rem)_auto] md:gap-x-4 md:border-l-[3px] md:border-transparent md:pl-3 md:pr-1">
+                  <div className="hidden md:block" />
+                  <SortButton
+                    column="category"
+                    label="Category"
+                    activeColumn={sort.column}
+                    direction={sort.direction}
+                    onSort={handleSort}
+                    className="md:w-full md:px-0"
+                  />
+                  <SortButton
+                    column="date"
+                    label="Date"
+                    activeColumn={sort.column}
+                    direction={sort.direction}
+                    onSort={handleSort}
+                    className="md:w-full md:px-0"
+                  />
+                  <SortButton
+                    column="type"
+                    label="Type"
+                    activeColumn={sort.column}
+                    direction={sort.direction}
+                    onSort={handleSort}
+                    className="md:w-full md:px-0"
+                  />
+                  <SortButton
+                    column="amount"
+                    label="Amount"
+                    activeColumn={sort.column}
+                    direction={sort.direction}
+                    onSort={handleSort}
+                    className="md:w-full md:justify-end md:px-0"
+                  />
+                  <SortButton
+                    column="notes"
+                    label="Notes"
+                    activeColumn={sort.column}
+                    direction={sort.direction}
+                    onSort={handleSort}
+                    className="md:hidden"
+                  />
+                </div>
+                <ul className="min-w-0 space-y-4">
+                  {sortedList.map((tx) => {
+                    const category = getCategoryById(tx.categoryId);
+                    return (
+                      <TransactionRow
+                        key={tx.id}
+                        categoryInitial={category?.name?.slice(0, 1) ?? "?"}
+                        categoryName={category?.name ?? "Unknown"}
+                        subtitle={tx.notes || tx.date}
+                        dateLabel={formatDateWithPreference(tx.date, dateFormat)}
+                        type={tx.type}
+                        amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
+                        onOpen={() => openDetail(tx)}
+                        actions={
+                          <>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive touch-manipulation"
-                              onClick={() => setConfirmingDeleteId(tx.id)}
+                              className="h-8 w-8 touch-manipulation"
+                              onClick={() => openEdit(tx)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Pencil className="h-4 w-4" />
                             </Button>
-                          )}
-                        </>
-                      }
-                    />
-                  );
-                })}
-              </ul>
+                            {confirmingDeleteId === tx.id && !deletingId ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 touch-manipulation"
+                                  onClick={() => setConfirmingDeleteId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 min-w-0 shrink gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                                  onClick={async () => {
+                                    setDeletingId(tx.id);
+                                    try {
+                                      await handleDelete(tx.id);
+                                      setConfirmingDeleteId(null);
+                                    } finally {
+                                      setDeletingId(null);
+                                    }
+                                  }}
+                                >
+                                  Are you sure?
+                                </Button>
+                              </>
+                            ) : deletingId === tx.id ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 min-w-0 gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                                disabled
+                              >
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Deleting…
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive touch-manipulation"
+                                onClick={() => setConfirmingDeleteId(tx.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </>
+                        }
+                      />
+                    );
+                  })}
+                </ul>
+              </div>
             )}
             {list.length > 0 && (
               <div ref={sentinelRef} className="flex justify-center py-4">

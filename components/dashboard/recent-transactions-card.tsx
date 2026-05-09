@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
+import { SortButton } from "@/components/dashboard/sort-button";
 import { Pencil, Trash2, ArrowRight, Loader2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
@@ -14,8 +15,17 @@ import {
   formatDateWithPreference,
 } from "@/lib/format-date";
 import type { Transaction } from "@/lib/budget-types";
+import {
+  compareNumber,
+  compareText,
+  nextSortState,
+  type SortState,
+  withSortDirection,
+} from "@/lib/sort-utils";
 import { TransactionFormDialog } from "./transaction-form-dialog";
 import { TransactionDetailDialog } from "./transaction-detail-dialog";
+
+type TransactionSortColumn = "category" | "notes" | "date" | "type" | "amount";
 
 export function RecentTransactionsCard() {
   const { transactions, getCategoryById, deleteTransaction } = useBudget();
@@ -26,11 +36,37 @@ export function RecentTransactionsCard() {
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState<TransactionSortColumn>>({
+    column: "date",
+    direction: "desc",
+  });
 
-  const sorted = [...transactions].sort((a, b) =>
-    compareIsoDateStringsDesc(a.date, b.date)
-  );
-  const recent = sorted.slice(0, 5);
+  const recent = useMemo(() => {
+    const latest = [...transactions]
+      .sort((a, b) => compareIsoDateStringsDesc(a.date, b.date))
+      .slice(0, 5);
+
+    return latest.sort((a, b) => {
+      const aCategory = getCategoryById(a.categoryId)?.name ?? "";
+      const bCategory = getCategoryById(b.categoryId)?.name ?? "";
+      const comparison =
+        sort.column === "category"
+          ? compareText(aCategory, bCategory)
+          : sort.column === "notes"
+            ? compareText(a.notes, b.notes)
+            : sort.column === "date"
+              ? compareText(a.date, b.date)
+              : sort.column === "type"
+                ? compareText(a.type, b.type)
+                : compareNumber(a.amount, b.amount);
+
+      return withSortDirection(comparison, sort.direction);
+    });
+  }, [transactions, getCategoryById, sort]);
+
+  const handleSort = (column: TransactionSortColumn) => {
+    setSort((current) => nextSortState(current, column));
+  };
 
   const openDetail = (tx: Transaction) => {
     setConfirmingDeleteId(null);
@@ -77,82 +113,127 @@ export function RecentTransactionsCard() {
               No transactions yet. Use the + button to create one.
             </p>
           ) : (
-            <ul className="min-w-0 space-y-4">
-              {recent.map((tx) => {
-                const category = getCategoryById(tx.categoryId);
-                return (
-                  <TransactionRow
-                    key={tx.id}
-                    categoryInitial={category?.name?.slice(0, 1) ?? "?"}
-                    categoryName={category?.name ?? "Unknown"}
-                    subtitle={tx.notes || tx.date}
-                    dateLabel={formatDateWithPreference(tx.date, dateFormat)}
-                    type={tx.type}
-                    amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
-                    onOpen={() => openDetail(tx)}
-                    actions={
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 touch-manipulation"
-                          onClick={() => openEdit(tx)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {confirmingDeleteId === tx.id && !deletingId ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 touch-manipulation"
-                              onClick={() => setConfirmingDeleteId(null)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 min-w-0 shrink gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
-                              onClick={async () => {
-                                setDeletingId(tx.id);
-                                try {
-                                  await deleteTransaction(tx.id);
-                                  setConfirmingDeleteId(null);
-                                } finally {
-                                  setDeletingId(null);
-                                }
-                              }}
-                            >
-                              Are you sure?
-                            </Button>
-                          </>
-                        ) : deletingId === tx.id ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 min-w-0 gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
-                            disabled
-                          >
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Deleting…
-                          </Button>
-                        ) : (
+            <div className="min-w-0">
+              <div className="mb-3 flex min-w-0 flex-wrap gap-1 md:grid md:grid-cols-[2.5rem_minmax(0,0.6fr)_minmax(0,7rem)_5.5rem_minmax(0,7rem)_auto] md:gap-x-4 md:border-l-[3px] md:border-transparent md:pl-3 md:pr-1">
+                <div className="hidden md:block" />
+                <SortButton
+                  column="category"
+                  label="Category"
+                  activeColumn={sort.column}
+                  direction={sort.direction}
+                  onSort={handleSort}
+                  className="md:w-full md:px-0"
+                />
+                <SortButton
+                  column="date"
+                  label="Date"
+                  activeColumn={sort.column}
+                  direction={sort.direction}
+                  onSort={handleSort}
+                  className="md:w-full md:px-0"
+                />
+                <SortButton
+                  column="type"
+                  label="Type"
+                  activeColumn={sort.column}
+                  direction={sort.direction}
+                  onSort={handleSort}
+                  className="md:w-full md:px-0"
+                />
+                <SortButton
+                  column="amount"
+                  label="Amount"
+                  activeColumn={sort.column}
+                  direction={sort.direction}
+                  onSort={handleSort}
+                  className="md:w-full md:justify-end md:px-0"
+                />
+                <SortButton
+                  column="notes"
+                  label="Notes"
+                  activeColumn={sort.column}
+                  direction={sort.direction}
+                  onSort={handleSort}
+                  className="md:hidden"
+                />
+              </div>
+              <ul className="min-w-0 space-y-4">
+                {recent.map((tx) => {
+                  const category = getCategoryById(tx.categoryId);
+                  return (
+                    <TransactionRow
+                      key={tx.id}
+                      categoryInitial={category?.name?.slice(0, 1) ?? "?"}
+                      categoryName={category?.name ?? "Unknown"}
+                      subtitle={tx.notes || tx.date}
+                      dateLabel={formatDateWithPreference(tx.date, dateFormat)}
+                      type={tx.type}
+                      amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
+                      onOpen={() => openDetail(tx)}
+                      actions={
+                        <>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive touch-manipulation"
-                            onClick={() => setConfirmingDeleteId(tx.id)}
+                            className="h-8 w-8 touch-manipulation"
+                            onClick={() => openEdit(tx)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
-                      </>
-                    }
-                  />
-                );
-              })}
-            </ul>
+                          {confirmingDeleteId === tx.id && !deletingId ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 touch-manipulation"
+                                onClick={() => setConfirmingDeleteId(null)}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 min-w-0 shrink gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                                onClick={async () => {
+                                  setDeletingId(tx.id);
+                                  try {
+                                    await deleteTransaction(tx.id);
+                                    setConfirmingDeleteId(null);
+                                  } finally {
+                                    setDeletingId(null);
+                                  }
+                                }}
+                              >
+                                Are you sure?
+                              </Button>
+                            </>
+                          ) : deletingId === tx.id ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 min-w-0 gap-2 text-destructive hover:text-destructive sm:min-w-[7rem] touch-manipulation"
+                              disabled
+                            >
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Deleting…
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive touch-manipulation"
+                              onClick={() => setConfirmingDeleteId(tx.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </CardContent>
       </Card>

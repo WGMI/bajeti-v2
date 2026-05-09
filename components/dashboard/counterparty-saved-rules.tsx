@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType } from "@/lib/budget-types";
@@ -20,6 +20,13 @@ import {
 } from "@/components/ui/select";
 import { CounterpartyMessagesButton } from "@/components/dashboard/counterparty-messages-dialog";
 import { CounterpartyRuleTestButton } from "@/components/dashboard/counterparty-rule-test-dialog";
+import { SortButton } from "@/components/dashboard/sort-button";
+import {
+  compareText,
+  nextSortState,
+  type SortState,
+  withSortDirection,
+} from "@/lib/sort-utils";
 
 type RuleRow = {
   id: string;
@@ -29,10 +36,16 @@ type RuleRow = {
   categoryName: string;
 };
 
+type RuleSortColumn = "counterparty" | "scope" | "type" | "category";
+
 const API = "/api";
 
 function formatKeyLabel(key: string): string {
   return key.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getTypeLabel(type: CategoryType): string {
+  return type === "income" ? "Income" : type === "expense" ? "Expense" : "Transfer";
 }
 
 export function CounterpartySavedRules({
@@ -55,23 +68,60 @@ export function CounterpartySavedRules({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sort, setSort] = useState<SortState<RuleSortColumn>>({
+    column: "counterparty",
+    direction: "asc",
+  });
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredRules = normalizedSearch
-    ? rules.filter((rule) => {
-        const typeLabel =
-          rule.transactionType === "income"
-            ? "income"
-            : rule.transactionType === "expense"
-              ? "expense"
-              : "transfer";
+  const filteredRules = useMemo(() => {
+    const matches = normalizedSearch
+      ? rules.filter((rule) => {
+        const typeLabel = getTypeLabel(rule.transactionType).toLowerCase();
         return (
           rule.counterpartyKey.toLowerCase().includes(normalizedSearch) ||
           rule.categoryName.toLowerCase().includes(normalizedSearch) ||
           typeLabel.includes(normalizedSearch)
         );
       })
-    : rules;
+      : rules;
+
+    return [...matches].sort((a, b) => {
+      const aSplit = splitScopedCounterpartyKey(a.counterpartyKey);
+      const bSplit = splitScopedCounterpartyKey(b.counterpartyKey);
+      const aType = typeEdits[a.id] ?? a.transactionType;
+      const bType = typeEdits[b.id] ?? b.transactionType;
+      const aCategoryId = categoryEdits[a.id] ?? a.categoryId;
+      const bCategoryId = categoryEdits[b.id] ?? b.categoryId;
+      const aCategory = categories.find((c) => c.id === aCategoryId)?.name ?? a.categoryName;
+      const bCategory = categories.find((c) => c.id === bCategoryId)?.name ?? b.categoryName;
+      const aScope = scopeEdits[a.id] ?? (aSplit.accountReference ? "account" : "all");
+      const bScope = scopeEdits[b.id] ?? (bSplit.accountReference ? "account" : "all");
+      const comparison =
+        sort.column === "counterparty"
+          ? compareText(counterpartyEdits[a.id] ?? aSplit.baseKey, counterpartyEdits[b.id] ?? bSplit.baseKey)
+          : sort.column === "scope"
+            ? compareText(aScope, bScope)
+            : sort.column === "type"
+              ? compareText(getTypeLabel(aType), getTypeLabel(bType))
+              : compareText(aCategory, bCategory);
+
+      return withSortDirection(comparison, sort.direction);
+    });
+  }, [
+    categories,
+    categoryEdits,
+    counterpartyEdits,
+    normalizedSearch,
+    rules,
+    scopeEdits,
+    sort,
+    typeEdits,
+  ]);
+
+  const handleSort = (column: RuleSortColumn) => {
+    setSort((current) => nextSortState(current, column));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -224,7 +274,7 @@ export function CounterpartySavedRules({
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         {rules.length > 0 ? (
-          <div className="pb-3">
+          <div className="space-y-3 pb-3">
             <Label htmlFor="saved-rules-search" className="sr-only">
               Search saved rules
             </Label>
@@ -236,6 +286,36 @@ export function CounterpartySavedRules({
               placeholder="Search by name, category, or type"
               className="h-9"
             />
+            <div className="flex flex-wrap gap-1">
+              <SortButton
+                column="counterparty"
+                label="Counterparty"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+              <SortButton
+                column="scope"
+                label="Scope"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+              <SortButton
+                column="type"
+                label="Type"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+              <SortButton
+                column="category"
+                label="Category"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+            </div>
           </div>
         ) : null}
         {rules.length === 0 ? (
@@ -252,12 +332,7 @@ export function CounterpartySavedRules({
             {filteredRules.map((rule) => {
               const split = splitScopedCounterpartyKey(rule.counterpartyKey);
               const typeValue = typeEdits[rule.id] ?? rule.transactionType;
-              const typeLabel =
-                typeValue === "income"
-                  ? "Income"
-                  : typeValue === "expense"
-                    ? "Expense"
-                    : "Transfer";
+              const typeLabel = getTypeLabel(typeValue);
               const cats = categories.filter((c) => c.type === typeValue);
               const catId = categoryEdits[rule.id] ?? rule.categoryId;
               const keyValue = counterpartyEdits[rule.id] ?? split.baseKey;

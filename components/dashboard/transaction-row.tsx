@@ -102,13 +102,13 @@ export function TransactionRow({
         </div>
       </div>
 
-      <div className="hidden min-w-0 md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,7rem)_5.5rem_minmax(0,6.5rem)_auto] md:items-center md:gap-x-4">
+      <div className="hidden min-w-0 md:grid md:grid-cols-[2.5rem_minmax(0,0.6fr)_minmax(0,7rem)_5.5rem_minmax(0,7rem)_auto] md:items-center md:gap-x-4">
         {avatar}
         <div className="min-w-0">
           <p className="truncate font-medium">{categoryName}</p>
           <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
         </div>
-        <div className="min-w-0 truncate text-right text-sm text-muted-foreground tabular-nums">
+        <div className="min-w-0 truncate text-left text-sm text-muted-foreground tabular-nums">
           {dateLabel}
         </div>
         <div className="min-w-0 self-center">{typeBadge}</div>

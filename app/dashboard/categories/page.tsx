@@ -4,14 +4,23 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SortButton } from "@/components/dashboard/sort-button";
 import { Pencil, Trash2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import type { Category } from "@/lib/budget-types";
+import {
+  compareText,
+  nextSortState,
+  type SortState,
+  withSortDirection,
+} from "@/lib/sort-utils";
 import { CategoryFormDialog } from "@/components/dashboard/category-form-dialog";
 import {
   DeleteCategoryDialog,
   type DeleteCategoryAction,
 } from "@/components/dashboard/delete-category-dialog";
+
+type CategorySortColumn = "name";
 
 function CategoriesPageContent() {
   const searchParams = useSearchParams();
@@ -25,6 +34,10 @@ function CategoriesPageContent() {
     null
   );
   const [deleting, setDeleting] = useState(false);
+  const [sort, setSort] = useState<SortState<CategorySortColumn>>({
+    column: "name",
+    direction: "asc",
+  });
 
   useEffect(() => {
     // Only `add=1` is for this page. `add=income|expense` is for GlobalAddTransactionDialog.
@@ -90,9 +103,16 @@ function CategoriesPageContent() {
     }
   };
 
-  const incomeCategories = categories.filter((c) => c.type === "income");
-  const expenseCategories = categories.filter((c) => c.type === "expense");
-  const transferCategories = categories.filter((c) => c.type === "transfer");
+  const sortCategories = (items: Category[]) =>
+    [...items].sort((a, b) => withSortDirection(compareText(a.name, b.name), sort.direction));
+
+  const incomeCategories = sortCategories(categories.filter((c) => c.type === "income"));
+  const expenseCategories = sortCategories(categories.filter((c) => c.type === "expense"));
+  const transferCategories = sortCategories(categories.filter((c) => c.type === "transfer"));
+
+  const handleSort = (column: CategorySortColumn) => {
+    setSort((current) => nextSortState(current, column));
+  };
 
   return (
     <div className="space-y-6">
@@ -105,11 +125,19 @@ function CategoriesPageContent() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
-          <CardHeader>
+          <CardHeader className="space-y-2">
             <CardTitle className="text-base font-medium flex items-center gap-2">
               <span className="rounded-full bg-success/15 p-1.5 text-success">↑</span>
               Income
             </CardTitle>
+            <SortButton
+              column="name"
+              label="Name"
+              activeColumn={sort.column}
+              direction={sort.direction}
+              onSort={handleSort}
+              className="w-fit"
+            />
           </CardHeader>
           <CardContent>
             <ul className="min-w-0 space-y-2">
@@ -147,11 +175,19 @@ function CategoriesPageContent() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="space-y-2">
             <CardTitle className="text-base font-medium flex items-center gap-2">
               <span className="rounded-full bg-muted p-1.5 text-muted-foreground">↓</span>
               Expense
             </CardTitle>
+            <SortButton
+              column="name"
+              label="Name"
+              activeColumn={sort.column}
+              direction={sort.direction}
+              onSort={handleSort}
+              className="w-fit"
+            />
           </CardHeader>
           <CardContent>
             <ul className="min-w-0 space-y-2">
@@ -189,11 +225,19 @@ function CategoriesPageContent() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="space-y-2">
             <CardTitle className="text-base font-medium flex items-center gap-2">
               <span className="rounded-full bg-blue-500/10 p-1.5 text-blue-600">↔</span>
               Transfer
             </CardTitle>
+            <SortButton
+              column="name"
+              label="Name"
+              activeColumn={sort.column}
+              direction={sort.direction}
+              onSort={handleSort}
+              className="w-fit"
+            />
           </CardHeader>
           <CardContent>
             <ul className="min-w-0 space-y-2">

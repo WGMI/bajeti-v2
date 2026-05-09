@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SortButton } from "@/components/dashboard/sort-button";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { formatCurrency } from "@/lib/format-currency";
@@ -18,6 +19,13 @@ import {
 } from "@/lib/budget-utils";
 import type { Transaction } from "@/lib/budget-types";
 import { cn } from "@/lib/utils";
+import {
+  compareNumber,
+  compareText,
+  nextSortState,
+  type SortState,
+  withSortDirection,
+} from "@/lib/sort-utils";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { LayoutGrid, List } from "lucide-react";
 import { TransactionDetailDialog } from "@/components/dashboard/transaction-detail-dialog";
@@ -43,6 +51,7 @@ function getMonthDateRange(key: string): { dateFrom: string; dateTo: string } {
 }
 
 type ViewMode = "list" | "grid";
+type MonthSortColumn = "month" | "income" | "expenses" | "balance";
 
 export default function MonthlyPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -50,13 +59,34 @@ export default function MonthlyPage() {
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [sort, setSort] = useState<SortState<MonthSortColumn>>({
+    column: "month",
+    direction: "desc",
+  });
   const { transactions, getCategoryById, loading, error, refetch } = useBudget();
   const { currency, dateFormat } = useSettings();
   const byMonth = useMemo(() => getMonthTotals(transactions), [transactions]);
 
   const sortedMonths = useMemo(() => {
-    return Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
-  }, [byMonth]);
+    return Object.keys(byMonth).sort((a, b) => {
+      const aTotals = byMonth[a];
+      const bTotals = byMonth[b];
+      const comparison =
+        sort.column === "month"
+          ? compareText(a, b)
+          : sort.column === "income"
+            ? compareNumber(aTotals.income, bTotals.income)
+            : sort.column === "expenses"
+              ? compareNumber(aTotals.expenses, bTotals.expenses)
+              : compareNumber(aTotals.balance, bTotals.balance);
+
+      return withSortDirection(comparison, sort.direction);
+    });
+  }, [byMonth, sort]);
+
+  const handleSort = (column: MonthSortColumn) => {
+    setSort((current) => nextSortState(current, column));
+  };
 
   const txByMonth = useMemo(() => {
     const map: Record<string, Transaction[]> = {};
@@ -99,25 +129,57 @@ export default function MonthlyPage() {
           </p>
         </div>
         {sortedMonths.length > 0 && (
-          <div className="flex rounded-lg border border-border p-1 bg-muted/30">
-            <Button
-              variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setViewMode("list")}
-            >
-              <List className="h-4 w-4" />
-              List
-            </Button>
-            <Button
-              variant={viewMode === "grid" ? "secondary" : "ghost"}
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setViewMode("grid")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-              Grid
-            </Button>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className="flex rounded-lg border border-border p-1 bg-muted/30">
+              <Button
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setViewMode("list")}
+              >
+                <List className="h-4 w-4" />
+                List
+              </Button>
+              <Button
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setViewMode("grid")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                Grid
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <SortButton
+                column="month"
+                label="Month"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+              <SortButton
+                column="income"
+                label="Income"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+              <SortButton
+                column="expenses"
+                label="Expenses"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+              <SortButton
+                column="balance"
+                label="Net"
+                activeColumn={sort.column}
+                direction={sort.direction}
+                onSort={handleSort}
+              />
+            </div>
           </div>
         )}
       </div>

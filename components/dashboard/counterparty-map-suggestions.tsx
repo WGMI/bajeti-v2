@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Tag, Loader2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType } from "@/lib/budget-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { SortButton } from "@/components/dashboard/sort-button";
+import {
+  compareNumber,
+  compareText,
+  nextSortState,
+  type SortState,
+  withSortDirection,
+} from "@/lib/sort-utils";
 import {
   Select,
   SelectContent,
@@ -22,7 +30,13 @@ type Suggestion = {
   count: number;
 };
 
+type SuggestionSortColumn = "name" | "type" | "count";
+
 const API = "/api";
+
+function getTypeLabel(type: CategoryType): string {
+  return type === "income" ? "Income" : type === "expense" ? "Expense" : "Transfer";
+}
 
 export function CounterpartyMapSuggestions({
   refreshKey = 0,
@@ -41,6 +55,27 @@ export function CounterpartyMapSuggestions({
   const [error, setError] = useState<string | null>(null);
   const [categoryChoice, setCategoryChoice] = useState<Record<string, string>>({});
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState<SuggestionSortColumn>>({
+    column: "count",
+    direction: "desc",
+  });
+
+  const sortedSuggestions = useMemo(() => {
+    return [...suggestions].sort((a, b) => {
+      const comparison =
+        sort.column === "name"
+          ? compareText(a.label, b.label)
+          : sort.column === "type"
+            ? compareText(getTypeLabel(a.transactionType), getTypeLabel(b.transactionType))
+            : compareNumber(a.count, b.count);
+
+      return withSortDirection(comparison, sort.direction);
+    });
+  }, [suggestions, sort]);
+
+  const handleSort = (column: SuggestionSortColumn) => {
+    setSort((current) => nextSortState(current, column));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -174,13 +209,31 @@ export function CounterpartyMapSuggestions({
         ) : null}
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
-        {suggestions.map((s) => {
-          const typeLabel =
-            s.transactionType === "income"
-              ? "Income"
-              : s.transactionType === "expense"
-                ? "Expense"
-                : "Transfer";
+        <div className="flex flex-wrap gap-1">
+          <SortButton
+            column="name"
+            label="Name"
+            activeColumn={sort.column}
+            direction={sort.direction}
+            onSort={handleSort}
+          />
+          <SortButton
+            column="type"
+            label="Type"
+            activeColumn={sort.column}
+            direction={sort.direction}
+            onSort={handleSort}
+          />
+          <SortButton
+            column="count"
+            label="Count"
+            activeColumn={sort.column}
+            direction={sort.direction}
+            onSort={handleSort}
+          />
+        </div>
+        {sortedSuggestions.map((s) => {
+          const typeLabel = getTypeLabel(s.transactionType);
           const cats = categories.filter((c) => c.type === s.transactionType);
           const catId = categoryChoice[s.counterpartyKey] ?? "";
           return (
