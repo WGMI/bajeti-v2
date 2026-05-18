@@ -3,6 +3,7 @@
 This document describes the API endpoints the mobile app should use first:
 
 - Summary endpoint for dashboard cards/charts.
+- Transactions list endpoint for history screens.
 - Settings endpoints (shared web settings + mobile-specific settings).
 - SMS endpoints (linked at the end).
 
@@ -66,7 +67,68 @@ Returns current-month, all-time, trend, and expense-by-category aggregates in on
 - `401` unauthorized
 - `500` server error
 
-## 2) Settings options endpoint
+## 2) Transactions list endpoint
+
+### `GET /api/transactions`
+
+Returns the signed-in user's transactions, newest first. Use this for transaction history screens. Aggregates only (counts, totals) live on `GET /api/summary`; there is no `GET /api/transactions/[id]` for a single row.
+
+#### Query params
+
+- `limit` (optional): page size, 1–100, default `20`. Passing `limit` or `cursor` enables pagination.
+- `cursor` (optional): opaque cursor from a previous response (`date|id`, e.g. `2026-03-15|abc123`).
+- `type` (optional): `income`, `expense`, or `transfer`.
+- `dateFrom` / `dateTo` (optional): `YYYY-MM-DD` inclusive range.
+- `search` (optional): case-insensitive match on transaction notes or category name.
+
+#### Example requests
+
+`GET /api/transactions?limit=20`
+
+`GET /api/transactions?limit=20&cursor=2026-03-15|abc123&type=expense&dateFrom=2026-03-01&dateTo=2026-03-31&search=food`
+
+Omit both `limit` and `cursor` to fetch all matching rows in one response (no `nextCursor`). Prefer paginated calls on mobile.
+
+#### Response shape
+
+```json
+{
+  "transactions": [
+    {
+      "id": "tx_1",
+      "amount": 50,
+      "categoryId": "cat_1",
+      "categoryName": "Food",
+      "date": "2026-03-15",
+      "notes": "Lunch",
+      "type": "expense",
+      "smsCounterparty": null,
+      "smsCounterpartyKey": null
+    }
+  ],
+  "nextCursor": "2026-03-15|tx_1",
+  "totalIncome": 3000,
+  "totalExpense": 900
+}
+```
+
+`nextCursor` is `null` when there are no more pages. `totalIncome` and `totalExpense` reflect the current filters (including `search`), not only the current page.
+
+#### Pagination flow
+
+1. Request with `limit` (and optional filters).
+2. Render `transactions`.
+3. If `nextCursor` is non-null, request again with the same filters plus `cursor=<nextCursor>`.
+4. Stop when `nextCursor` is `null`.
+
+#### Status codes
+
+- `200` success
+- `400` invalid `cursor`
+- `401` unauthorized
+- `500` server error
+
+## 3) Settings options endpoint
 
 ### `GET /api/settings/options`
 
@@ -83,7 +145,7 @@ Returns allowed values for settings fields so mobile can build pickers safely.
 }
 ```
 
-## 3) Mobile settings endpoint
+## 4) Mobile settings endpoint
 
 ### `GET /api/settings/mobile`
 
@@ -138,3 +200,5 @@ Before using `/api/settings/mobile`, run:
 
 - SMS single + idempotent creation: `docs/SMS-API-MOBILE.md`
 - SMS bulk import: `POST /api/sms/bulk`
+- Counterparty SMS bodies: `GET /api/counterparty-messages?counterpartyKey=...&transactionType=income|expense`
+- Update/delete a transaction: `PATCH` / `DELETE` on `/api/transactions/[id]` (no read-by-id)

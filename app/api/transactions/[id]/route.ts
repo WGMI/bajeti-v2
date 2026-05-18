@@ -8,6 +8,7 @@ type TransactionRow = {
   id: string;
   amount: string;
   category_id: string;
+  category_name: string | null;
   date: string;
   notes: string | null;
   type: string;
@@ -20,6 +21,7 @@ function rowToTransaction(row: TransactionRow) {
     id: row.id,
     amount: Number(row.amount),
     categoryId: row.category_id,
+    categoryName: row.category_name ?? "Unknown",
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as CategoryType,
@@ -58,7 +60,8 @@ export async function PATCH(
       SET amount = ${numAmount}, category_id = ${categoryId}, date = ${date}, notes = ${notes ?? ""}, type = (${type})::category_type
       WHERE id = ${id} AND user_id = ${userId}
       RETURNING id, amount, category_id, date::text AS date, notes, type,
-        sms_counterparty, sms_counterparty_key
+        sms_counterparty, sms_counterparty_key,
+        (SELECT c.name FROM categories c WHERE c.id = category_id AND c.user_id = ${userId}) AS category_name
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {

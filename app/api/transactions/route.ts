@@ -9,12 +9,17 @@ type TransactionRow = {
   id: string;
   amount: string;
   category_id: string;
+  category_name: string | null;
   date: string;
   notes: string | null;
   type: string;
   sms_counterparty: string | null;
   sms_counterparty_key: string | null;
 };
+
+const categoryNameSubquery = (userId: string) => sql`
+  (SELECT c.name FROM categories c WHERE c.id = category_id AND c.user_id = ${userId}) AS category_name
+`;
 
 type TotalsRow = {
   total_income: string | null;
@@ -26,6 +31,7 @@ function rowToTransaction(row: TransactionRow) {
     id: row.id,
     amount: Number(row.amount),
     categoryId: row.category_id,
+    categoryName: row.category_name ?? "Unknown",
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
     type: row.type as CategoryType,
@@ -65,8 +71,11 @@ export async function GET(request: Request) {
         : null;
 
     const typeCond = validType ? sql`type = ${validType}::category_type` : sql`true`;
+    const tTypeCond = validType ? sql`t.type = ${validType}::category_type` : sql`true`;
     const dateFromCond = dateFrom ? sql`date >= ${dateFrom}::date` : sql`true`;
     const dateToCond = dateTo ? sql`date <= ${dateTo}::date` : sql`true`;
+    const tDateFromCond = dateFrom ? sql`t.date >= ${dateFrom}::date` : sql`true`;
+    const tDateToCond = dateTo ? sql`t.date <= ${dateTo}::date` : sql`true`;
     const searchPattern = search ? `%${search}%` : null;
     const searchCond = searchPattern
       ? sql`(t.notes ILIKE ${searchPattern} OR c.name ILIKE ${searchPattern})`
@@ -82,7 +91,7 @@ export async function GET(request: Request) {
         FROM transactions t
         INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
         WHERE t.user_id = ${userId}
-          AND ${typeCond} AND ${dateFromCond} AND ${dateToCond} AND ${searchCond}
+          AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
       ` as TotalsRow[];
       const cursorCond = cursor
         ? (() => {
@@ -99,11 +108,12 @@ export async function GET(request: Request) {
       if (usePagination && cursor) {
         rows = await sql`
           SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
-            t.sms_counterparty, t.sms_counterparty_key
+            t.sms_counterparty, t.sms_counterparty_key,
+            c.name AS category_name
           FROM transactions t
           INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
           WHERE t.user_id = ${userId}
-            AND ${typeCond} AND ${dateFromCond} AND ${dateToCond} AND ${searchCond}
+            AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
             ${cursorCond}
           ORDER BY t.date DESC, t.id DESC
           LIMIT ${limit}
@@ -111,22 +121,24 @@ export async function GET(request: Request) {
       } else if (usePagination) {
         rows = await sql`
           SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
-            t.sms_counterparty, t.sms_counterparty_key
+            t.sms_counterparty, t.sms_counterparty_key,
+            c.name AS category_name
           FROM transactions t
           INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
           WHERE t.user_id = ${userId}
-            AND ${typeCond} AND ${dateFromCond} AND ${dateToCond} AND ${searchCond}
+            AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
           ORDER BY t.date DESC, t.id DESC
           LIMIT ${limit}
         ` as TransactionRow[];
       } else {
         rows = await sql`
           SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
-            t.sms_counterparty, t.sms_counterparty_key
+            t.sms_counterparty, t.sms_counterparty_key,
+            c.name AS category_name
           FROM transactions t
           INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
           WHERE t.user_id = ${userId}
-            AND ${typeCond} AND ${dateFromCond} AND ${dateToCond} AND ${searchCond}
+            AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
           ORDER BY t.date DESC, t.id DESC
         ` as TransactionRow[];
       }
@@ -148,34 +160,40 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
           }
           rows = await sql`
-            SELECT id, amount, category_id, date::text AS date, notes, type,
-              sms_counterparty, sms_counterparty_key
-            FROM transactions
-            WHERE user_id = ${userId}
-              AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
-              AND (date < ${cursorDate}::date OR (date = ${cursorDate}::date AND id < ${cursorId}))
-            ORDER BY date DESC, id DESC
+            SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+              t.sms_counterparty, t.sms_counterparty_key,
+              c.name AS category_name
+            FROM transactions t
+            LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+            WHERE t.user_id = ${userId}
+              AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
+              AND (t.date < ${cursorDate}::date OR (t.date = ${cursorDate}::date AND t.id < ${cursorId}))
+            ORDER BY t.date DESC, t.id DESC
             LIMIT ${limit}
           ` as TransactionRow[];
         } else {
           rows = await sql`
-            SELECT id, amount, category_id, date::text AS date, notes, type,
-              sms_counterparty, sms_counterparty_key
-            FROM transactions
-            WHERE user_id = ${userId}
-              AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
-            ORDER BY date DESC, id DESC
+            SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+              t.sms_counterparty, t.sms_counterparty_key,
+              c.name AS category_name
+            FROM transactions t
+            LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+            WHERE t.user_id = ${userId}
+              AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
+            ORDER BY t.date DESC, t.id DESC
             LIMIT ${limit}
           ` as TransactionRow[];
         }
       } else {
         rows = await sql`
-          SELECT id, amount, category_id, date::text AS date, notes, type,
-            sms_counterparty, sms_counterparty_key
-          FROM transactions
-          WHERE user_id = ${userId}
-            AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
-          ORDER BY date DESC, id DESC
+          SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+            t.sms_counterparty, t.sms_counterparty_key,
+            c.name AS category_name
+          FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+          WHERE t.user_id = ${userId}
+            AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
+          ORDER BY t.date DESC, t.id DESC
         ` as TransactionRow[];
       }
     }
@@ -231,13 +249,15 @@ export async function POST(request: Request) {
         hashedIdempotencyKey,
       });
       const existingRows = await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, type,
-          sms_counterparty, sms_counterparty_key
-        FROM transactions
-        WHERE user_id = ${userId}
+        SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+          t.sms_counterparty, t.sms_counterparty_key,
+          c.name AS category_name
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+        WHERE t.user_id = ${userId}
           AND (
-            sms_idempotency_key = ${hashedIdempotencyKey}
-            OR sms_idempotency_key = ${normalizedIdempotencyKey}
+            t.sms_idempotency_key = ${hashedIdempotencyKey}
+            OR t.sms_idempotency_key = ${normalizedIdempotencyKey}
           )
         LIMIT 1
       `;
@@ -265,7 +285,8 @@ export async function POST(request: Request) {
       )
       ON CONFLICT DO NOTHING
       RETURNING id, amount, category_id, date::text AS date, notes, type,
-        sms_counterparty, sms_counterparty_key
+        sms_counterparty, sms_counterparty_key,
+        ${categoryNameSubquery(userId)}
     `;
     const row = rows[0] as TransactionRow | undefined;
     if (!row) {
@@ -278,13 +299,15 @@ export async function POST(request: Request) {
         hashedIdempotencyKey,
       });
       const existingRows = await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, type,
-          sms_counterparty, sms_counterparty_key
-        FROM transactions
-        WHERE user_id = ${userId}
+        SELECT t.id, t.amount, t.category_id, t.date::text AS date, t.notes, t.type,
+          t.sms_counterparty, t.sms_counterparty_key,
+          c.name AS category_name
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+        WHERE t.user_id = ${userId}
           AND (
-            sms_idempotency_key = ${hashedIdempotencyKey}
-            OR sms_idempotency_key = ${normalizedIdempotencyKey}
+            t.sms_idempotency_key = ${hashedIdempotencyKey}
+            OR t.sms_idempotency_key = ${normalizedIdempotencyKey}
           )
         LIMIT 1
       `;

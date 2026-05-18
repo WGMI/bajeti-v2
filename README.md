@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## API docs (mobile)
+
+Authenticated REST endpoints for the mobile app are documented in [`docs/MOBILE-API.md`](docs/MOBILE-API.md) (summary, transactions list, settings, SMS). All routes use Clerk: `Authorization: Bearer <clerk_session_token>`.
+
 ## Getting Started
 
 First, run the development server:
