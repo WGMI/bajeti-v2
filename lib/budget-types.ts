@@ -13,6 +13,8 @@ export interface Transaction {
   categoryId: string;
   /** Present on API responses when loaded with a category join. */
   categoryName?: string;
+  /** Present on API responses: `{ id, name }` for display. */
+  category?: { id: string; name: string };
   date: string; // ISO date YYYY-MM-DD
   notes: string;
   type: CategoryType;

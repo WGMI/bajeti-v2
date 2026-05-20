@@ -70,7 +70,7 @@ export function SidebarNavContent({ onLinkClick }: { onLinkClick?: () => void })
 
 export function DashboardSidebar() {
   return (
-    <aside className="hidden w-16 flex-col border-r bg-sidebar md:flex md:w-20 lg:w-56">
+    <aside className="sticky top-0 hidden h-screen w-16 shrink-0 self-start flex-col border-r bg-sidebar md:flex md:w-20 lg:w-56">
       <div className="relative flex flex-col">
         <SidebarNavContent />
       </div>

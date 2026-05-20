@@ -1,34 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
-import { normalizeTransactionDateFromDb } from "@/lib/format-date";
-import type { CategoryType } from "@/lib/budget-types";
-
-type TransactionRow = {
-  id: string;
-  amount: string;
-  category_id: string;
-  category_name: string | null;
-  date: string;
-  notes: string | null;
-  type: string;
-  sms_counterparty: string | null;
-  sms_counterparty_key: string | null;
-};
-
-function rowToTransaction(row: TransactionRow) {
-  return {
-    id: row.id,
-    amount: Number(row.amount),
-    categoryId: row.category_id,
-    categoryName: row.category_name ?? "Unknown",
-    date: normalizeTransactionDateFromDb(row.date),
-    notes: row.notes ?? "",
-    type: row.type as CategoryType,
-    smsCounterparty: row.sms_counterparty,
-    smsCounterpartyKey: row.sms_counterparty_key,
-  };
-}
+import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 
 export async function PATCH(
   request: Request,

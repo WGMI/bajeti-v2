@@ -1,21 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
-import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 import { createHash } from "crypto";
-import type { CategoryType } from "@/lib/budget-types";
-
-type TransactionRow = {
-  id: string;
-  amount: string;
-  category_id: string;
-  category_name: string | null;
-  date: string;
-  notes: string | null;
-  type: string;
-  sms_counterparty: string | null;
-  sms_counterparty_key: string | null;
-};
+import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 
 const categoryNameSubquery = (userId: string) => sql`
   (SELECT c.name FROM categories c WHERE c.id = category_id AND c.user_id = ${userId}) AS category_name
@@ -25,20 +12,6 @@ type TotalsRow = {
   total_income: string | null;
   total_expense: string | null;
 };
-
-function rowToTransaction(row: TransactionRow) {
-  return {
-    id: row.id,
-    amount: Number(row.amount),
-    categoryId: row.category_id,
-    categoryName: row.category_name ?? "Unknown",
-    date: normalizeTransactionDateFromDb(row.date),
-    notes: row.notes ?? "",
-    type: row.type as CategoryType,
-    smsCounterparty: row.sms_counterparty,
-    smsCounterpartyKey: row.sms_counterparty_key,
-  };
-}
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -89,7 +62,7 @@ export async function GET(request: Request) {
           COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_income,
           COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_expense
         FROM transactions t
-        INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+        INNER JOIN categories c ON c.id = t.category_id
         WHERE t.user_id = ${userId}
           AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
       ` as TotalsRow[];
@@ -111,7 +84,7 @@ export async function GET(request: Request) {
             t.sms_counterparty, t.sms_counterparty_key,
             c.name AS category_name
           FROM transactions t
-          INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+          INNER JOIN categories c ON c.id = t.category_id
           WHERE t.user_id = ${userId}
             AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
             ${cursorCond}
@@ -124,7 +97,7 @@ export async function GET(request: Request) {
             t.sms_counterparty, t.sms_counterparty_key,
             c.name AS category_name
           FROM transactions t
-          INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+          INNER JOIN categories c ON c.id = t.category_id
           WHERE t.user_id = ${userId}
             AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
           ORDER BY t.date DESC, t.id DESC
@@ -136,7 +109,7 @@ export async function GET(request: Request) {
             t.sms_counterparty, t.sms_counterparty_key,
             c.name AS category_name
           FROM transactions t
-          INNER JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+          INNER JOIN categories c ON c.id = t.category_id
           WHERE t.user_id = ${userId}
             AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond} AND ${searchCond}
           ORDER BY t.date DESC, t.id DESC
@@ -164,7 +137,7 @@ export async function GET(request: Request) {
               t.sms_counterparty, t.sms_counterparty_key,
               c.name AS category_name
             FROM transactions t
-            LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+            LEFT JOIN categories c ON c.id = t.category_id
             WHERE t.user_id = ${userId}
               AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
               AND (t.date < ${cursorDate}::date OR (t.date = ${cursorDate}::date AND t.id < ${cursorId}))
@@ -177,7 +150,7 @@ export async function GET(request: Request) {
               t.sms_counterparty, t.sms_counterparty_key,
               c.name AS category_name
             FROM transactions t
-            LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+            LEFT JOIN categories c ON c.id = t.category_id
             WHERE t.user_id = ${userId}
               AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
             ORDER BY t.date DESC, t.id DESC
@@ -190,7 +163,7 @@ export async function GET(request: Request) {
             t.sms_counterparty, t.sms_counterparty_key,
             c.name AS category_name
           FROM transactions t
-          LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+          LEFT JOIN categories c ON c.id = t.category_id
           WHERE t.user_id = ${userId}
             AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
           ORDER BY t.date DESC, t.id DESC
@@ -253,7 +226,7 @@ export async function POST(request: Request) {
           t.sms_counterparty, t.sms_counterparty_key,
           c.name AS category_name
         FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+        LEFT JOIN categories c ON c.id = t.category_id
         WHERE t.user_id = ${userId}
           AND (
             t.sms_idempotency_key = ${hashedIdempotencyKey}
@@ -303,7 +276,7 @@ export async function POST(request: Request) {
           t.sms_counterparty, t.sms_counterparty_key,
           c.name AS category_name
         FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
+        LEFT JOIN categories c ON c.id = t.category_id
         WHERE t.user_id = ${userId}
           AND (
             t.sms_idempotency_key = ${hashedIdempotencyKey}
