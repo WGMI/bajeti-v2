@@ -1,3 +1,5 @@
+import type { CategoryType } from "@/lib/budget-types";
+
 /**
  * Format a number as currency using Intl.NumberFormat.
  * Use with the currency code from settings (e.g. "USD", "TZS").
@@ -21,13 +23,16 @@ export function formatCurrency(
 }
 
 /**
- * Format amount with sign prefix (+ / −) for income/expense display.
+ * Format amount with sign prefix (+ / −) from transaction type.
+ * Amounts are stored as positive; sign is presentation only.
  */
 export function formatCurrencyWithSign(
   amount: number,
-  currencyCode: string
+  currencyCode: string,
+  type?: CategoryType
 ): string {
   const formatted = formatCurrency(Math.abs(amount), currencyCode);
-  const sign = amount >= 0 ? "+" : "−";
-  return `${sign} ${formatted}`;
+  const sign =
+    type === "income" ? "+" : type === "expense" ? "−" : "";
+  return sign ? `${sign} ${formatted}` : formatted;
 }

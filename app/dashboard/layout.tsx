@@ -3,6 +3,7 @@ import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { FloatingActionButton } from "@/components/dashboard/floating-action-button";
 import { GlobalAddTransactionDialog } from "@/components/dashboard/global-add-transaction-dialog";
+import { GlobalAddCategoryDialog } from "@/components/dashboard/global-add-category-dialog";
 import { BudgetProvider } from "@/lib/budget-store";
 import { SettingsProvider } from "@/lib/settings-store";
 
@@ -25,6 +26,7 @@ export default function DashboardLayout({
         <Suspense fallback={null}>
           <FloatingActionButton />
           <GlobalAddTransactionDialog />
+          <GlobalAddCategoryDialog />
         </Suspense>
       </div>
     </BudgetProvider>

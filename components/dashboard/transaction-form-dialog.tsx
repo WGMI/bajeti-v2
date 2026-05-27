@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,10 +87,16 @@ function TransactionFormFields({
   const [type, setType] = useState<CategoryType>(initial.type);
   const [date, setDate] = useState(initial.date);
   const [notes, setNotes] = useState(initial.notes);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
 
   const selectedCategory = categoryId ? getCategoryById(categoryId) : null;
   const effectiveType = isEdit ? type : (selectedCategory?.type ?? typeLock ?? type);
   const relevantCategories = categories.filter((c) => c.type === effectiveType);
+  const normalizedCategoryQuery = categoryQuery.trim().toLowerCase();
+  const filteredCategories = normalizedCategoryQuery
+    ? relevantCategories.filter((c) => c.name.toLowerCase().includes(normalizedCategoryQuery))
+    : relevantCategories;
 
   const [showPasteSms, setShowPasteSms] = useState(false);
   const [smsText, setSmsText] = useState("");
@@ -256,7 +263,7 @@ function TransactionFormFields({
     try {
       if (isEdit && editingTransaction) {
         const updated = await updateTransaction(editingTransaction.id, {
-          amount: txType === "expense" ? -num : num,
+          amount: num,
           categoryId,
           date,
           notes,
@@ -265,7 +272,7 @@ function TransactionFormFields({
         onUpdated?.(updated);
       } else {
         const created = await addTransaction({
-          amount: txType === "expense" ? -num : num,
+          amount: num,
           categoryId,
           date,
           notes,
@@ -475,20 +482,68 @@ function TransactionFormFields({
       )}
       <div className="space-y-2">
         <Label htmlFor="category">Category</Label>
-        <Select value={categoryId} onValueChange={setCategoryId}>
-          <SelectTrigger id="category">
+        <Button
+          id="category"
+          type="button"
+          variant="outline"
+          className="w-full justify-between"
+          onClick={() => {
+            setCategoryQuery("");
+            setCategoryPickerOpen(true);
+          }}
+        >
+          <span className="truncate">
             {categoryId
               ? getCategoryById(categoryId)?.name ?? "Select category"
               : "Select category"}
-          </SelectTrigger>
-          <SelectContent>
-            {relevantCategories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          </span>
+          <span className="text-xs text-muted-foreground">Choose</span>
+        </Button>
+        <Dialog open={categoryPickerOpen} onOpenChange={setCategoryPickerOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Select category</DialogTitle>
+              <DialogDescription>
+                Pick a {effectiveType} category for this transaction.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="category-search">Search categories</Label>
+              <Input
+                id="category-search"
+                placeholder="Type category name..."
+                value={categoryQuery}
+                onChange={(e) => setCategoryQuery(e.target.value)}
+              />
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {filteredCategories.length > 0 ? (
+                filteredCategories.map((c) => (
+                  <Button
+                    key={c.id}
+                    type="button"
+                    variant={c.id === categoryId ? "default" : "outline"}
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setCategoryId(c.id);
+                      setCategoryPickerOpen(false);
+                    }}
+                  >
+                    {c.name}
+                  </Button>
+                ))
+              ) : normalizedCategoryQuery ? (
+                <p className="text-sm text-muted-foreground">
+                  No {effectiveType} category matches "{categoryQuery}".
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No categories found for {effectiveType}. Create one first.
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
       <div className="space-y-2">
         <Label htmlFor="date">Date</Label>

@@ -168,7 +168,7 @@ export function RecentTransactionsCard() {
                       subtitle={tx.notes || tx.date}
                       dateLabel={formatDateWithPreference(tx.date, dateFormat)}
                       type={tx.type}
-                      amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
+                      amountFormatted={formatCurrencyWithSign(tx.amount, currency, tx.type)}
                       onOpen={() => openDetail(tx)}
                       actions={
                         <>

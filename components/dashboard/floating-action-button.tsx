@@ -15,9 +15,9 @@ export function FloatingActionButton() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const openAddTransaction = (type: "income" | "expense" | "transfer") => {
+  const openAddDialog = (addValue: "income" | "expense" | "transfer" | "category") => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.set("add", type);
+    params.set("add", addValue);
     router.push(`${pathname}?${params.toString()}`);
   };
 
@@ -34,19 +34,19 @@ export function FloatingActionButton() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="mb-2">
-          <DropdownMenuItem onClick={() => openAddTransaction("income")}>
+          <DropdownMenuItem onClick={() => openAddDialog("income")}>
             <TrendingUp className="h-4 w-4 mr-2 text-success" />
             Add income
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => openAddTransaction("expense")}>
+          <DropdownMenuItem onClick={() => openAddDialog("expense")}>
             <TrendingDown className="h-4 w-4 mr-2" />
             Add expense
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => openAddTransaction("transfer")}>
+          <DropdownMenuItem onClick={() => openAddDialog("transfer")}>
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Add transfer
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push("/dashboard/categories?add=1")}>
+          <DropdownMenuItem onClick={() => openAddDialog("category")}>
             <Tags className="h-4 w-4 mr-2" />
             Add category
           </DropdownMenuItem>

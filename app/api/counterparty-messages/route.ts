@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { effectiveCounterpartyFromTransaction } from "@/lib/counterparty-helpers";
 import { normalizeSmsCounterpartyKey } from "@/lib/sms-parser";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
+import { normalizeStoredAmount } from "@/lib/transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 
 const MAX_SCAN = 400;
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
       messages.push({
         id: row.id,
         date: normalizeTransactionDateFromDb(row.date),
-        amount: Number(row.amount),
+        amount: normalizeStoredAmount(Number(row.amount)),
         body,
       });
       if (messages.length >= MAX_RETURN) break;

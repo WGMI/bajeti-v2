@@ -111,7 +111,7 @@ export function CounterpartyMessagesButton({
                 <div key={m.id} className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-1.5">
                   <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
                     <span className="font-medium tabular-nums text-foreground">
-                      {formatCurrencyWithSign(m.amount, currency)}
+                      {formatCurrencyWithSign(m.amount, currency, transactionType)}
                     </span>
                     <span>{formatDateWithPreference(m.date, dateFormat)}</span>
                   </div>

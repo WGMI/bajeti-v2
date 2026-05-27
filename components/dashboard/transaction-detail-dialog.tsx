@@ -123,7 +123,7 @@ export function TransactionDetailDialog({
                 isIncome ? "text-success" : isTransfer ? "text-blue-700" : "text-foreground"
               )}
             >
-              {formatCurrencyWithSign(transaction.amount, currency)}
+              {formatCurrencyWithSign(transaction.amount, currency, transaction.type)}
             </span>
           </div>
           <div className="flex items-center justify-between gap-4">

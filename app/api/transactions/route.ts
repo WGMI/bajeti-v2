@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { createHash } from "crypto";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { parseAmountForStorage } from "@/lib/transaction-amount";
 
 const categoryNameSubquery = (userId: string) => sql`
   (SELECT c.name FROM categories c WHERE c.id = category_id AND c.user_id = ${userId}) AS category_name
@@ -206,8 +207,8 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
-    const numAmount = Number(amount);
-    if (Number.isNaN(numAmount)) {
+    const numAmount = parseAmountForStorage(amount);
+    if (numAmount == null) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
     const normalizedIdempotencyKey =

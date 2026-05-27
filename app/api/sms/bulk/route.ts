@@ -8,8 +8,10 @@ import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
+import { parseAmountForStorage } from "@/lib/transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
+import { normalizeStoredAmount } from "@/lib/transaction-amount";
 
 type CategoryRow = { id: string; name: string; type: string };
 type TransactionRow = {
@@ -26,7 +28,7 @@ type TransactionRow = {
 function rowToTransaction(row: TransactionRow) {
   return {
     id: row.id,
-    amount: Number(row.amount),
+    amount: normalizeStoredAmount(Number(row.amount)),
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
@@ -237,6 +239,17 @@ export async function POST(request: Request) {
           continue;
         }
         const transactionType = effectiveType as CategoryType;
+        const storedAmount = parseAmountForStorage(parsed.amount);
+        if (storedAmount == null) {
+          results.push({
+            index: i,
+            status: "ignored",
+            transactionCreated: false,
+            reason: "Parsed transaction amount is missing or invalid",
+            parsed: parsedForResponse,
+          });
+          continue;
+        }
 
         const category = (await resolveCategoryForSmsIngestion(
           userId,
@@ -300,7 +313,7 @@ export async function POST(request: Request) {
           )
           VALUES (
             ${userId},
-            ${parsed.amount},
+            ${storedAmount},
             ${category.id},
             ${parsed.date},
             ${parsed.message},

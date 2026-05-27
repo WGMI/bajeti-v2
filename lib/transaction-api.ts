@@ -1,4 +1,5 @@
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
+import { normalizeStoredAmount } from "@/lib/transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 
 export type TransactionRow = {
@@ -22,7 +23,7 @@ export function rowToTransaction(row: TransactionRow) {
   const categoryName = categoryNameFromRow(row);
   return {
     id: row.id,
-    amount: Number(row.amount),
+    amount: normalizeStoredAmount(Number(row.amount)),
     categoryId: row.category_id,
     categoryName,
     category: {

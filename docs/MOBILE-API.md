@@ -1,14 +1,37 @@
 # Mobile API
 
-This document describes the API endpoints the mobile app should use first:
+Reference for every authenticated API route under `app/api/`. All endpoints require Clerk authentication unless noted.
 
-- Summary endpoint for dashboard cards/charts.
-- Transactions endpoints (list, create, update, delete).
-- Categories endpoints (list, create, update, delete).
-- Settings endpoints (shared web settings + mobile-specific settings).
-- SMS endpoints (linked at the end).
+## Endpoint index
 
-All endpoints require Clerk authentication.
+| Method | Path | Section |
+|--------|------|---------|
+| `GET` | `/api/summary` | [Summary](#1-summary-endpoint) |
+| `GET` | `/api/transactions` | [Transactions](#2-transactions-endpoints) |
+| `POST` | `/api/transactions` | [Transactions](#2-transactions-endpoints) |
+| `PATCH` | `/api/transactions/[id]` | [Transactions](#2-transactions-endpoints) |
+| `DELETE` | `/api/transactions/[id]` | [Transactions](#2-transactions-endpoints) |
+| `GET` | `/api/categories` | [Categories](#3-categories-endpoints) |
+| `POST` | `/api/categories` | [Categories](#3-categories-endpoints) |
+| `PATCH` | `/api/categories/[id]` | [Categories](#3-categories-endpoints) |
+| `DELETE` | `/api/categories/[id]` | [Categories](#3-categories-endpoints) |
+| `GET` | `/api/settings/options` | [Settings](#4-settings-endpoints) |
+| `GET` | `/api/settings` | [Settings](#4-settings-endpoints) |
+| `PATCH` | `/api/settings` | [Settings](#4-settings-endpoints) |
+| `GET` | `/api/settings/mobile` | [Settings](#4-settings-endpoints) |
+| `PATCH` | `/api/settings/mobile` | [Settings](#4-settings-endpoints) |
+| `POST` | `/api/sms` | [SMS](#5-sms-endpoints) |
+| `POST` | `/api/sms/bulk` | [SMS](#5-sms-endpoints) |
+| `POST` | `/api/sms/preview` | [SMS](#5-sms-endpoints) |
+| `GET` | `/api/sms/categories` | [SMS](#5-sms-endpoints) |
+| `GET` | `/api/counterparty-messages` | [Counterparty](#6-counterparty-endpoints) |
+| `GET` | `/api/counterparty-rules` | [Counterparty](#6-counterparty-endpoints) |
+| `POST` | `/api/counterparty-rules` | [Counterparty](#6-counterparty-endpoints) |
+| `PATCH` | `/api/counterparty-rules/[id]` | [Counterparty](#6-counterparty-endpoints) |
+| `DELETE` | `/api/counterparty-rules/[id]` | [Counterparty](#6-counterparty-endpoints) |
+| `GET` | `/api/counterparty-suggestions` | [Counterparty](#6-counterparty-endpoints) |
+
+Prefer `GET` / `PATCH /api/settings/mobile` on mobile (merged shared + mobile fields). Use `GET` / `PATCH /api/settings` only if you need shared settings without mobile fields.
 
 ## Auth
 
@@ -159,7 +182,7 @@ Creates a manual transaction for the signed-in user.
 
 #### Request body
 
-- `amount` (required): number.
+- `amount` (required): positive number (magnitude only). Use `type` for income vs expense; negative values are normalized to `ABS(amount)` on the server.
 - `categoryId` (required): category UUID owned by the user.
 - `date` (required): `YYYY-MM-DD`.
 - `type` (required): `income`, `expense`, or `transfer`.
@@ -379,11 +402,11 @@ If the category has transactions, send a JSON body with one of:
 - `409` category has transactions (body omitted or neither option provided); response includes `transactionCount`
 - `500` server error
 
-## 4) Settings options endpoint
+## 4) Settings endpoints
 
 ### `GET /api/settings/options`
 
-Returns allowed values for settings fields so mobile can build pickers safely.
+Returns allowed values for settings fields so mobile can build pickers safely. No auth required.
 
 #### Response shape
 
@@ -392,17 +415,71 @@ Returns allowed values for settings fields so mobile can build pickers safely.
   "currency": ["USD", "EUR", "GBP", "TZS", "KES", "NGN", "ZAR", "INR"],
   "dateFormat": ["short", "medium", "long"],
   "firstDayOfWeek": ["sunday", "monday"],
+  "smsTransactionDateSource": ["message", "received_at"],
   "theme": ["system", "light", "dark"]
 }
 ```
 
-## 5) Mobile settings endpoint
+#### Status codes
+
+- `200` success
+
+### `GET /api/settings`
+
+Returns shared (web) settings only: `currency`, `dateFormat`, `firstDayOfWeek`, `smsTransactionDateSource`. Defaults are auto-created if missing.
+
+#### Response shape
+
+```json
+{
+  "currency": "USD",
+  "dateFormat": "medium",
+  "firstDayOfWeek": "monday",
+  "smsTransactionDateSource": "received_at"
+}
+```
+
+`smsTransactionDateSource` controls SMS parsing date: `message` uses the date in the SMS body; `received_at` uses the client `timestamp` (or receipt time).
+
+#### Status codes
+
+- `200` success
+- `401` unauthorized
+- `500` server error
+
+### `PATCH /api/settings`
+
+Partial update of shared settings. Only send fields to change.
+
+#### Request body (all optional)
+
+- `currency`, `dateFormat`, `firstDayOfWeek`, `smsTransactionDateSource` — same allowed values as in `GET /api/settings/options`.
+
+#### Example request
+
+```json
+{
+  "currency": "KES",
+  "smsTransactionDateSource": "message"
+}
+```
+
+#### Response shape
+
+Returns the updated shared settings object (same shape as `GET`).
+
+#### Status codes
+
+- `200` success
+- `400` invalid field value
+- `401` unauthorized
+- `500` server error
 
 ### `GET /api/settings/mobile`
 
 Returns a single merged settings object:
 
-- Shared with web: `currency`, `dateFormat`, `firstDayOfWeek`
+- Shared with web: `currency`, `dateFormat`, `firstDayOfWeek`, `smsTransactionDateSource`
 - Mobile-specific: `theme`, `notificationsEnabled`, `biometricsEnabled`
 
 If rows are missing, defaults are auto-created.
@@ -414,6 +491,7 @@ If rows are missing, defaults are auto-created.
   "currency": "USD",
   "dateFormat": "medium",
   "firstDayOfWeek": "monday",
+  "smsTransactionDateSource": "received_at",
   "theme": "system",
   "notificationsEnabled": true,
   "biometricsEnabled": false
@@ -422,7 +500,7 @@ If rows are missing, defaults are auto-created.
 
 ### `PATCH /api/settings/mobile`
 
-Partial update is supported; only send fields you want to change.
+Partial update is supported; only send fields you want to change. Accepts any field from `GET` (shared + mobile).
 
 #### Example request
 
@@ -430,9 +508,14 @@ Partial update is supported; only send fields you want to change.
 {
   "currency": "KES",
   "theme": "dark",
-  "notificationsEnabled": false
+  "notificationsEnabled": false,
+  "smsTransactionDateSource": "received_at"
 }
 ```
+
+#### Response shape
+
+Returns the updated merged settings object (same shape as `GET`).
 
 #### Status codes
 
@@ -441,14 +524,371 @@ Partial update is supported; only send fields you want to change.
 - `401` unauthorized
 - `500` server error
 
-## Migration required
+### Migration
 
 Before using `/api/settings/mobile`, run:
 
 `psql $DATABASE_URL -f scripts/migrate-user-mobile-settings.sql`
 
+## 5) SMS endpoints
+
+SMS routes parse M-PESA-style messages (`lib/sms-parser.ts`), apply counterparty category rules when present, and create transactions with idempotency. Transfer-classified SMS are currently not inserted (status `ignored`). See also `docs/SMS-API-MOBILE.md` for mobile client integration notes.
+
+### Parsed object (`parsed`)
+
+Returned by `POST /api/sms`, `POST /api/sms/bulk`, and `POST /api/sms/preview`:
+
+```json
+{
+  "message": "Full SMS body",
+  "type": "expense",
+  "amount": 500,
+  "date": "2026-03-15",
+  "fee": 0,
+  "transactionRef": "ABC123",
+  "counterparty": "John Doe",
+  "counterpartyKey": "john-doe",
+  "accountReference": null
+}
+```
+
+`type` may be `income`, `expense`, `transfer`, or `neither`.
+
+### `POST /api/sms`
+
+Ingest one SMS and optionally create a transaction.
+
+#### Request body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | Raw SMS body |
+| `timestamp` | number | No | Unix ms; used when date source is `received_at` and SMS has no date |
+| `includeFeeInExpense` | boolean | No | If true, fee is added to expense amount. Default `false` |
+
+#### Example request
+
+```json
+{
+  "message": "You have received KES 500 from John Doe...",
+  "timestamp": 1710000000000,
+  "includeFeeInExpense": false
+}
+```
+
+#### Response shape
+
+```json
+{
+  "status": "created",
+  "transactionCreated": true,
+  "parsed": { "message": "...", "type": "income", "amount": 500, "date": "2026-03-15", "fee": 0, "transactionRef": null, "counterparty": "John Doe", "counterpartyKey": "john-doe", "accountReference": null },
+  "transaction": {
+    "id": "tx_1",
+    "amount": 500,
+    "categoryId": "cat_1",
+    "date": "2026-03-15",
+    "notes": "You have received...",
+    "type": "income",
+    "smsCounterparty": "John Doe",
+    "smsCounterpartyKey": "john-doe"
+  }
+}
+```
+
+`status` is one of:
+
+- `created` — new transaction inserted
+- `duplicate` — same SMS already processed (`transaction` is the existing row)
+- `ignored` — not actionable (`reason` explains why; no `transaction`)
+
+#### Status codes
+
+- `200` success (including `ignored` and `duplicate`)
+- `400` invalid body or no category for parsed type
+- `401` unauthorized
+- `500` server error
+
+### `POST /api/sms/bulk`
+
+Process up to 100 SMS strings in one request.
+
+#### Request body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `messages` | string[] | Yes | Array of raw SMS bodies (max 100) |
+| `timestamp` | number | No | Applied to all items when date source is `received_at` |
+| `includeFeeInExpense` | boolean | No | Default `false` |
+
+#### Example request
+
+```json
+{
+  "messages": ["SMS body 1", "SMS body 2"],
+  "timestamp": 1710000000000
+}
+```
+
+#### Response shape
+
+```json
+{
+  "summary": { "created": 1, "duplicates": 0, "ignored": 1, "failed": 0 },
+  "results": [
+    {
+      "index": 0,
+      "status": "created",
+      "transactionCreated": true,
+      "parsed": { "message": "...", "type": "expense", "amount": 100, "date": "2026-03-15", "fee": 0, "transactionRef": null, "counterparty": null, "counterpartyKey": null, "accountReference": null },
+      "transaction": { "id": "tx_1", "amount": 100, "categoryId": "cat_1", "date": "2026-03-15", "notes": "...", "type": "expense", "smsCounterparty": null, "smsCounterpartyKey": null }
+    },
+    {
+      "index": 1,
+      "status": "ignored",
+      "transactionCreated": false,
+      "reason": "Message did not match an income, expense, or transfer transaction",
+      "parsed": { "message": "...", "type": "neither", "amount": 0, "date": "", "fee": 0, "transactionRef": null, "counterparty": null, "counterpartyKey": null, "accountReference": null }
+    }
+  ]
+}
+```
+
+Per-item `status`: `created`, `duplicate`, `ignored`, or `failed`.
+
+#### Status codes
+
+- `200` success
+- `400` invalid payload (not an array, non-strings, or more than 100 messages)
+- `401` unauthorized
+- `500` server error
+
+### `POST /api/sms/preview`
+
+Parse one SMS and return a proposed transaction without inserting. Use to prefill a form before `POST /api/transactions`.
+
+#### Request body
+
+Same as `POST /api/sms` (`message`, optional `timestamp`, optional `includeFeeInExpense`).
+
+#### Response shape
+
+```json
+{
+  "status": "ready",
+  "reason": null,
+  "parsed": { "message": "...", "type": "expense", "amount": 50, "date": "2026-03-15", "fee": 0, "transactionRef": null, "counterparty": "Shop", "counterpartyKey": "shop", "accountReference": null },
+  "preview": {
+    "amount": 50,
+    "categoryId": "cat_1",
+    "date": "2026-03-15",
+    "notes": "Full SMS body...",
+    "type": "expense",
+    "smsCounterparty": "Shop",
+    "smsCounterpartyKey": "shop"
+  }
+}
+```
+
+`status` is `ready` (category resolved), `needs_category` (parsed OK but no category), or `ignored` (`preview` is `null`).
+
+#### Status codes
+
+- `200` success
+- `400` invalid body
+- `401` unauthorized
+- `500` server error
+
+### `GET /api/sms/categories`
+
+Returns the user's categories (same shape as `GET /api/categories`). Seeds defaults if the user has none. Convenience alias for SMS preview/edit flows.
+
+#### Response shape
+
+JSON array of category objects (see [Categories](#3-categories-endpoints)).
+
+#### Status codes
+
+- `200` success
+- `401` unauthorized
+- `500` server error
+
+## 6) Counterparty endpoints
+
+Counterparty keys come from SMS parsing (`counterpartyKey` on transactions). Rules map a payee/payer key + transaction type to a category; saving a rule also updates matching existing transactions.
+
+### Counterparty rule object
+
+```json
+{
+  "id": "rule_1",
+  "counterpartyKey": "john-doe",
+  "transactionType": "expense",
+  "categoryId": "cat_1",
+  "categoryName": "Food"
+}
+```
+
+### `GET /api/counterparty-messages`
+
+Returns up to 5 recent transaction notes (SMS bodies) for a counterparty.
+
+#### Query params
+
+- `counterpartyKey` (required): normalized payee/payer key
+- `transactionType` (required): `income` or `expense`
+
+#### Example request
+
+`GET /api/counterparty-messages?counterpartyKey=john-doe&transactionType=expense`
+
+#### Response shape
+
+```json
+{
+  "messages": [
+    { "id": "tx_1", "date": "2026-03-15", "amount": 500, "body": "You have sent KES 500 to John Doe..." }
+  ]
+}
+```
+
+#### Status codes
+
+- `200` success
+- `400` missing or invalid params
+- `401` unauthorized
+- `500` server error
+
+### `GET /api/counterparty-rules`
+
+Lists all saved counterparty → category rules for the user.
+
+#### Response shape
+
+```json
+{
+  "rules": [
+    {
+      "id": "rule_1",
+      "counterpartyKey": "john-doe",
+      "transactionType": "expense",
+      "categoryId": "cat_1",
+      "categoryName": "Food"
+    }
+  ]
+}
+```
+
+#### Status codes
+
+- `200` success
+- `401` unauthorized
+- `500` server error
+
+### `POST /api/counterparty-rules`
+
+Creates or updates a rule (upsert on `user_id` + `counterpartyKey` + `transactionType`) and reassigns matching transactions.
+
+#### Request body
+
+- `counterpartyKey` (required): string (may include `|account:...` scope suffix)
+- `transactionType` (required): `income`, `expense`, or `transfer`
+- `categoryId` (required): category UUID; category `type` must match `transactionType`
+- `counterpartyLabel` (optional): display label stored on updated transactions
+
+#### Example request
+
+```json
+{
+  "counterpartyKey": "john-doe",
+  "transactionType": "expense",
+  "categoryId": "cat_1",
+  "counterpartyLabel": "John Doe"
+}
+```
+
+#### Response shape
+
+```json
+{
+  "updatedCount": 3,
+  "transactions": [ { "id": "tx_1", "amount": 50, "categoryId": "cat_1", "date": "2026-03-15", "notes": "...", "type": "expense", "smsCounterparty": "John Doe", "smsCounterpartyKey": "john-doe" } ]
+}
+```
+
+#### Status codes
+
+- `200` success
+- `400` invalid payload or category mismatch
+- `401` unauthorized
+- `500` server error
+
+### `PATCH /api/counterparty-rules/[id]`
+
+Updates an existing rule and reassigns matching transactions. Same body as `POST`.
+
+#### Response shape
+
+```json
+{ "updatedCount": 2 }
+```
+
+#### Status codes
+
+- `200` success
+- `400` invalid payload or category mismatch
+- `401` unauthorized
+- `404` rule not found
+- `500` server error
+
+### `DELETE /api/counterparty-rules/[id]`
+
+Deletes a rule. Does not revert transaction categories.
+
+#### Example request
+
+`DELETE /api/counterparty-rules/rule_1`
+
+#### Response shape
+
+```json
+{ "ok": true }
+```
+
+#### Status codes
+
+- `200` success
+- `401` unauthorized
+- `404` rule not found
+- `500` server error
+
+### `GET /api/counterparty-suggestions`
+
+Suggests counterparties seen often in the last 90 days that do not yet have a rule (≥ 3 occurrences).
+
+#### Response shape
+
+```json
+{
+  "windowDays": 90,
+  "minOccurrences": 3,
+  "suggestions": [
+    {
+      "counterpartyKey": "john-doe",
+      "label": "John Doe",
+      "transactionType": "expense",
+      "count": 5
+    }
+  ]
+}
+```
+
+#### Status codes
+
+- `200` success
+- `401` unauthorized
+- `500` server error
+
 ## Related docs
 
-- SMS single + idempotent creation: `docs/SMS-API-MOBILE.md`
-- SMS bulk import: `POST /api/sms/bulk`
-- Counterparty SMS bodies: `GET /api/counterparty-messages?counterpartyKey=...&transactionType=income|expense`
+- Mobile SMS client setup: `docs/SMS-API-MOBILE.md`

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, Loader2, Filter, Search } from "lucide-react";
+import { Pencil, Trash2, Loader2, Filter, Search, X } from "lucide-react";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
 import { SortButton } from "@/components/dashboard/sort-button";
 import { useBudget } from "@/lib/budget-store";
@@ -57,41 +57,72 @@ function aggregateByCategory(
   txs: Transaction[],
   type: CategoryType,
   getCategoryById: (id: string) => Category | undefined
-): { name: string; value: number; fill: string }[] {
-  const map = new Map<string, number>();
+): { categoryId: string; name: string; value: number; fill: string; type: CategoryType }[] {
+  const map = new Map<string, { name: string; value: number }>();
   for (const tx of txs) {
     if (tx.type !== type) continue;
     const cat = getCategoryById(tx.categoryId);
     const name = cat?.name ?? "Unknown";
-    map.set(name, (map.get(name) ?? 0) + Math.abs(tx.amount));
+    const current = map.get(tx.categoryId);
+    map.set(tx.categoryId, {
+      name,
+      value: (current?.value ?? 0) + Math.abs(tx.amount),
+    });
   }
   return Array.from(map.entries())
-    .filter(([, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, value], i) => ({
-      name,
-      value,
+    .filter(([, entry]) => entry.value > 0)
+    .sort((a, b) => b[1].value - a[1].value)
+    .map(([categoryId, entry], i) => ({
+      categoryId,
+      name: entry.name,
+      value: entry.value,
       fill: CATEGORY_CHART_COLORS[i % CATEGORY_CHART_COLORS.length],
+      type,
     }));
 }
 
-async function fetchTransactionsPage(
-  limit: number,
-  cursor: string | null,
-  filters: { type: TypeFilter; dateFrom: string; dateTo: string; search: string }
-): Promise<TransactionsResponse> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (cursor) params.set("cursor", cursor);
+type TransactionFilters = {
+  type: TypeFilter;
+  dateFrom: string;
+  dateTo: string;
+  search: string;
+};
+
+function transactionFilterParams(filters: TransactionFilters): URLSearchParams {
+  const params = new URLSearchParams();
   if (filters.type !== "all") params.set("type", filters.type);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
   if (filters.search.trim()) params.set("search", filters.search.trim());
+  return params;
+}
+
+async function fetchTransactions(
+  filters: TransactionFilters,
+  options?: { limit?: number; cursor?: string | null }
+): Promise<TransactionsResponse> {
+  const params = transactionFilterParams(filters);
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.cursor) params.set("cursor", options.cursor);
   const res = await fetch(`${API}/transactions?${params}`, { credentials: "same-origin" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as { error?: string }).error ?? "Failed to load");
   }
   return res.json();
+}
+
+async function fetchTransactionsPage(
+  limit: number,
+  cursor: string | null,
+  filters: TransactionFilters
+): Promise<TransactionsResponse> {
+  return fetchTransactions(filters, { limit, cursor: cursor ?? undefined });
+}
+
+/** All rows for current filters (no limit); used so client-side sort is complete. */
+async function fetchAllTransactions(filters: TransactionFilters): Promise<TransactionsResponse> {
+  return fetchTransactions(filters);
 }
 
 function TransactionsPageContent() {
@@ -102,6 +133,7 @@ function TransactionsPageContent() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingAllForSort, setLoadingAllForSort] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -115,6 +147,7 @@ function TransactionsPageContent() {
   const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState<TransactionSortColumn>>({
     column: "date",
     direction: "desc",
@@ -132,9 +165,23 @@ function TransactionsPageContent() {
     () => aggregateByCategory(list, "expense", getCategoryById),
     [list, getCategoryById]
   );
+  const selectedSegment = useMemo(
+    () => [...incomeSegments, ...expenseSegments].find((segment) => segment.categoryId === selectedCategoryId),
+    [incomeSegments, expenseSegments, selectedCategoryId]
+  );
 
   const hasActiveFilters =
-    typeFilter !== "all" || dateFrom !== "" || dateTo !== "" || searchQuery !== "";
+    typeFilter !== "all" ||
+    dateFrom !== "" ||
+    dateTo !== "" ||
+    searchQuery !== "" ||
+    selectedCategoryId != null;
+  const activeFilterCount =
+    Number(typeFilter !== "all") +
+    Number(dateFrom !== "") +
+    Number(dateTo !== "") +
+    Number(searchQuery !== "") +
+    Number(selectedCategoryId != null);
 
   const sortedList = useMemo(() => {
     return [...list].sort((a, b) => {
@@ -154,6 +201,15 @@ function TransactionsPageContent() {
       return withSortDirection(comparison, sort.direction);
     });
   }, [list, getCategoryById, sort]);
+  const visibleList = useMemo(
+    () =>
+      selectedCategoryId
+        ? sortedList.filter((tx) => tx.categoryId === selectedCategoryId)
+        : sortedList,
+    [sortedList, selectedCategoryId]
+  );
+  const canAutoLoadMore =
+    sort.column === "date" && sort.direction === "desc" && selectedCategoryId == null;
 
   const handleSort = (column: TransactionSortColumn) => {
     setSort((current) => nextSortState(current, column));
@@ -181,7 +237,7 @@ function TransactionsPageContent() {
   }, [typeFilter, dateFrom, dateTo, searchQuery]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!canAutoLoadMore || !nextCursor || loadingMore) return;
     setLoadingMore(true);
     const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
     try {
@@ -195,11 +251,34 @@ function TransactionsPageContent() {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextCursor, loadingMore, typeFilter, dateFrom, dateTo, searchQuery]);
+  }, [canAutoLoadMore, nextCursor, loadingMore, typeFilter, dateFrom, dateTo, searchQuery]);
+
+  const loadAllForSort = useCallback(async () => {
+    if (!nextCursor || loadingAllForSort) return;
+    setLoadingAllForSort(true);
+    const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
+    try {
+      const data = await fetchAllTransactions(currentFilters);
+      setList(data.transactions);
+      setNextCursor(null);
+      setFullTotalIncome(data.totalIncome ?? 0);
+      setFullTotalExpense(data.totalExpense ?? 0);
+    } catch {
+      setError("Failed to load all transactions for sorting");
+    } finally {
+      setLoadingAllForSort(false);
+    }
+  }, [nextCursor, loadingAllForSort, typeFilter, dateFrom, dateTo, searchQuery]);
 
   useEffect(() => {
     loadFirstPage();
   }, [loadFirstPage]);
+
+  // Custom sort only applies to loaded rows; fetch the full filtered set once.
+  useEffect(() => {
+    if (canAutoLoadMore || loading || !nextCursor) return;
+    void loadAllForSort();
+  }, [canAutoLoadMore, loading, nextCursor, loadAllForSort]);
 
   useEffect(() => {
     const from = searchParams.get("dateFrom") ?? "";
@@ -209,6 +288,13 @@ function TransactionsPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (!selectedCategoryId) return;
+    const stillExists = list.some((tx) => tx.categoryId === selectedCategoryId);
+    if (!stillExists) setSelectedCategoryId(null);
+  }, [list, selectedCategoryId]);
+
+  useEffect(() => {
+    if (!canAutoLoadMore) return;
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -219,7 +305,7 @@ function TransactionsPageContent() {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [loadMore]);
+  }, [canAutoLoadMore, loadMore]);
 
   const openDetail = (tx: Transaction) => {
     setConfirmingDeleteId(null);
@@ -286,6 +372,7 @@ function TransactionsPageContent() {
     setDateTo("");
     setSearchQuery("");
     setSearchInput("");
+    setSelectedCategoryId(null);
   };
 
   const applySearch = () => {
@@ -306,14 +393,24 @@ function TransactionsPageContent() {
                 const chartData =
                   segments.length > 0
                     ? segments
-                    : [{ name: "No data", value: 1, fill: EMPTY_SLICE_COLOR }];
+                    : [
+                        {
+                          categoryId: "none",
+                          type: idx === 0 ? "income" : "expense",
+                          name: "No data",
+                          value: 1,
+                          fill: EMPTY_SLICE_COLOR,
+                        },
+                      ];
                 const title = idx === 0 ? "Income by category" : "Expenses by category";
+                const segmentType: CategoryType = idx === 0 ? "income" : "expense";
+                const isSelectedChart = selectedSegment?.type === segmentType;
                 return (
                   <div key={label} className="flex min-w-0 flex-col">
                     <p className="mb-2 text-center text-xs font-medium text-muted-foreground">
                       {title}
                     </p>
-                    <div className="h-[180px] w-full min-w-0">
+                    <div className="relative h-[180px] w-full min-w-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -327,9 +424,24 @@ function TransactionsPageContent() {
                             paddingAngle={segments.length > 1 ? 2 : 0}
                             stroke="none"
                             isAnimationActive={false}
+                            onClick={(_, index) => {
+                              const selected = segments[index];
+                              if (!selected) return;
+                              setTypeFilter(segmentType);
+                              setSelectedCategoryId(selected.categoryId);
+                            }}
                           >
                             {chartData.map((entry, i) => (
-                              <Cell key={`${entry.name}-${i}`} fill={entry.fill} />
+                              <Cell
+                                key={`${entry.name}-${i}`}
+                                fill={entry.fill}
+                                className={segments.length > 0 ? "cursor-pointer" : undefined}
+                                opacity={
+                                  selectedCategoryId && entry.categoryId !== selectedCategoryId
+                                    ? 0.45
+                                    : 1
+                                }
+                              />
                             ))}
                           </Pie>
                           <Tooltip
@@ -340,6 +452,22 @@ function TransactionsPageContent() {
                           />
                         </PieChart>
                       </ResponsiveContainer>
+                      {isSelectedChart && selectedSegment && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="absolute right-2 top-2 z-10 h-7 max-w-[80%] gap-1 rounded-full px-2 text-xs"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedCategoryId(null);
+                          }}
+                        >
+                          <span className="truncate">{selectedSegment.name}</span>
+                          <X className="h-3 w-3 shrink-0" />
+                        </Button>
+                      )}
                     </div>
                     <p className="mt-2 text-center text-sm font-semibold">
                       {formatCurrency(idx === 0 ? fullTotalIncome : fullTotalExpense, currency)}
@@ -412,16 +540,22 @@ function TransactionsPageContent() {
                 </div>
               </div>
               {hasActiveFilters && (
-                <Button variant="ghost" size="sm" className="h-9 w-full sm:w-auto" onClick={clearFilters}>
-                  Clear filters
+                <Button
+                  variant="outline"
+                  className="h-9 w-full border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
+                  onClick={clearFilters}
+                >
+                  Clear filters ({activeFilterCount})
                 </Button>
               )}
             </div>
           </div>
           <CardContent className="px-4 sm:px-6">
-            {list.length === 0 ? (
+            {visibleList.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">
-                No transactions yet. Use the + button to create one.
+                {selectedCategoryId
+                  ? "No transactions found for the selected chart segment."
+                  : "No transactions yet. Use the + button to create one."}
               </p>
             ) : (
               <div className="min-w-0">
@@ -469,7 +603,7 @@ function TransactionsPageContent() {
                   />
                 </div>
                 <ul className="min-w-0 space-y-4">
-                  {sortedList.map((tx) => {
+                  {visibleList.map((tx) => {
                     const category = getCategoryById(tx.categoryId);
                     return (
                       <TransactionRow
@@ -479,7 +613,7 @@ function TransactionsPageContent() {
                         subtitle={tx.notes || tx.date}
                         dateLabel={formatDateWithPreference(tx.date, dateFormat)}
                         type={tx.type}
-                        amountFormatted={formatCurrencyWithSign(tx.amount, currency)}
+                        amountFormatted={formatCurrencyWithSign(tx.amount, currency, tx.type)}
                         onOpen={() => openDetail(tx)}
                         actions={
                           <>
@@ -546,12 +680,19 @@ function TransactionsPageContent() {
                 </ul>
               </div>
             )}
-            {list.length > 0 && (
+            {visibleList.length > 0 && !canAutoLoadMore && loadingAllForSort && (
+              <p className="pb-2 text-center text-sm text-muted-foreground">
+                Loading all matching transactions for sorting…
+              </p>
+            )}
+            {visibleList.length > 0 && (
               <div ref={sentinelRef} className="flex justify-center py-4">
-                {loadingMore && (
-                  <p className="text-sm text-muted-foreground">Loading more…</p>
+                {(loadingMore || loadingAllForSort) && (
+                  <p className="text-sm text-muted-foreground">
+                    {loadingAllForSort ? "Loading all for sort…" : "Loading more…"}
+                  </p>
                 )}
-                {!loadingMore && nextCursor && (
+                {!loadingMore && !loadingAllForSort && nextCursor && canAutoLoadMore && (
                   <p className="text-sm text-muted-foreground">Scroll for more</p>
                 )}
               </div>

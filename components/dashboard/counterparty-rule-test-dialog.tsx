@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { FlaskConical, Loader2 } from "lucide-react";
 import type { CategoryType } from "@/lib/budget-types";
-import { formatCurrencyWithSign } from "@/lib/format-currency";
+import { formatCurrency, formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import { parseSms } from "@/lib/sms-parser";
 import { useSettings } from "@/lib/settings-store";
@@ -26,9 +26,7 @@ function buildSampleAmount(counterpartyKey: string, transactionType: CategoryTyp
     .reduce((sum, char, idx) => sum + char.charCodeAt(0) * (idx + 1), 0);
   const base = 500 + (seed % 9500);
   const cents = (seed % 100) / 100;
-  const amount = Math.round((base + cents) * 100) / 100;
-  if (transactionType === "income" || transactionType === "transfer") return amount;
-  return -amount;
+  return Math.round((base + cents) * 100) / 100;
 }
 
 function buildSampleSms(
@@ -103,11 +101,10 @@ export function CounterpartyRuleTestButton({
 
   const fallbackSample = useMemo(() => {
     const amount = buildSampleAmount(counterpartyKey, transactionType);
-    const rawAmount = Math.abs(amount);
     const isoDate = new Date().toISOString().slice(0, 10);
     const dateText = formatDateWithPreference(isoDate, dateFormat);
-    const signedAmountText = formatCurrencyWithSign(amount, currency);
-    const amountText = formatCurrencyWithSign(rawAmount, currency).replace(/^[+-]\s?/, "");
+    const signedAmountText = formatCurrencyWithSign(amount, currency, transactionType);
+    const amountText = formatCurrency(amount, currency);
     const sms = buildSampleSms(counterpartyLabel, transactionType, amountText, dateText);
     return {
       sms,
@@ -137,7 +134,11 @@ export function CounterpartyRuleTestButton({
         date: formatDateWithPreference(matchedMessage.date, dateFormat),
         notes: matchedMessage.body,
       },
-      signedAmountText: formatCurrencyWithSign(matchedMessage.amount, currency),
+      signedAmountText: formatCurrencyWithSign(
+        matchedMessage.amount,
+        currency,
+        transactionType
+      ),
     };
   }, [
     categoryName,
@@ -165,13 +166,13 @@ export function CounterpartyRuleTestButton({
   const typePass = parsed.type === transactionType;
   const keyPass = parsed.counterpartyKey === counterpartyKey;
   const isPassing = typePass && keyPass;
-  const previewAmount = parsed.amount
-    ? parsed.type === "expense"
-      ? -Math.abs(parsed.amount)
-      : Math.abs(parsed.amount)
-    : 0;
+  const previewAmount = parsed.amount ? Math.abs(parsed.amount) : 0;
+  const previewType =
+    parsed.type === "income" || parsed.type === "expense" || parsed.type === "transfer"
+      ? parsed.type
+      : transactionType;
   const previewSignedAmountText = parsed.amount
-    ? formatCurrencyWithSign(previewAmount, currency)
+    ? formatCurrencyWithSign(previewAmount, currency, previewType)
     : "—";
   const previewDateText = parsed.date ? formatDateWithPreference(parsed.date, dateFormat) : "—";
 

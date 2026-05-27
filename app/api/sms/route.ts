@@ -8,7 +8,9 @@ import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
+import { parseAmountForStorage } from "@/lib/transaction-amount";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
+import { normalizeStoredAmount } from "@/lib/transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string };
@@ -47,7 +49,7 @@ async function resolveEffectiveTransactionType(
 function transactionJson(row: TransactionRow) {
   return {
     id: row.id,
-    amount: Number(row.amount),
+    amount: normalizeStoredAmount(Number(row.amount)),
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
@@ -127,6 +129,15 @@ export async function POST(request: Request) {
       });
     }
     const transactionType = effectiveType as CategoryType;
+    const storedAmount = parseAmountForStorage(parsed.amount);
+    if (storedAmount == null) {
+      return NextResponse.json({
+        status: "ignored",
+        transactionCreated: false,
+        reason: "Parsed transaction amount is missing or invalid",
+        parsed: smsParseResultForApi(parsed),
+      });
+    }
 
     // Ensure user has categories, then get first category of the parsed type
     let categoryRows = await sql`
@@ -226,7 +237,7 @@ export async function POST(request: Request) {
       )
       VALUES (
         ${userId},
-        ${parsed.amount},
+        ${storedAmount},
         ${category.id},
         ${parsed.date},
         ${parsed.message},

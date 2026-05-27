@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { parseAmountForStorage } from "@/lib/transaction-amount";
 
 export async function PATCH(
   request: Request,
@@ -24,8 +25,8 @@ export async function PATCH(
     ) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
-    const numAmount = Number(amount);
-    if (Number.isNaN(numAmount)) {
+    const numAmount = parseAmountForStorage(amount);
+    if (numAmount == null) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
     const rows = await sql`
