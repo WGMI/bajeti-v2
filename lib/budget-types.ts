@@ -39,6 +39,10 @@ export interface Transaction {
   /** Payee / payer label from SMS when available. */
   smsCounterparty?: string | null;
   smsCounterpartyKey?: string | null;
+  /** Present on POST /api/transactions responses only. */
+  status?: "created" | "duplicate";
+  /** User-facing note when `status` is `duplicate`. */
+  message?: string;
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, "id">[] = [

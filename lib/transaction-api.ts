@@ -30,6 +30,27 @@ export function accountNameFromRow(row: TransactionRow): string {
   return typeof name === "string" && name.trim().length > 0 ? name.trim() : "Wallet";
 }
 
+/** Shown when POST /api/transactions replays an existing row (idempotency / SMS dedupe). */
+export const TRANSACTION_CREATE_DUPLICATE_MESSAGE =
+  "Duplicate SMS ignored: this transaction is already saved.";
+
+export type TransactionCreateStatus = "created" | "duplicate";
+
+export function transactionCreateResponse(
+  row: TransactionRow,
+  createStatus: TransactionCreateStatus
+) {
+  const transaction = rowToTransaction(row);
+  if (createStatus === "duplicate") {
+    return {
+      ...transaction,
+      status: createStatus,
+      message: TRANSACTION_CREATE_DUPLICATE_MESSAGE,
+    };
+  }
+  return { ...transaction, status: createStatus };
+}
+
 export function rowToTransaction(row: TransactionRow) {
   const categoryName = categoryNameFromRow(row);
   const transferLeg =

@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { createHash } from "crypto";
-import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import {
+  transactionCreateResponse,
+  rowToTransaction,
+  type TransactionRow,
+} from "@/lib/transaction-api";
 import { parseAmountForStorage } from "@/lib/transaction-amount";
 import { resolveAccountId } from "@/lib/accounts";
 import { createTransferPair } from "@/lib/transfers";
@@ -244,7 +248,7 @@ export async function POST(request: Request) {
           idempotencyKey: hashedIdempotencyKey,
         });
         const outLeg = pair.find((r) => r.transfer_leg === "out") ?? pair[0];
-        return NextResponse.json(rowToTransaction(outLeg));
+        return NextResponse.json(transactionCreateResponse(outLeg, "created"));
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to create transfer";
         return NextResponse.json({ error: message }, { status: 400 });
@@ -265,7 +269,7 @@ export async function POST(request: Request) {
         normalizedIdempotencyKey
       );
       if (existing) {
-        return NextResponse.json(rowToTransaction(existing));
+        return NextResponse.json(transactionCreateResponse(existing, "duplicate"));
       }
     }
 
@@ -299,14 +303,14 @@ export async function POST(request: Request) {
       if (!existing) {
         return NextResponse.json({ error: "Insert failed" }, { status: 500 });
       }
-      return NextResponse.json(rowToTransaction(existing));
+      return NextResponse.json(transactionCreateResponse(existing, "duplicate"));
     }
 
     const row = await fetchTransactionById(userId, insertedId);
     if (!row) {
       return NextResponse.json({ error: "Insert failed" }, { status: 500 });
     }
-    return NextResponse.json(rowToTransaction(row));
+    return NextResponse.json(transactionCreateResponse(row, "created"));
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to create transaction" }, { status: 500 });

@@ -290,11 +290,47 @@ Returns the **out** leg (`transferLeg: "out"`). Fetch the list or filter by `tra
 
 #### Response shape
 
-Returns a single transaction object (see above).
+Returns a transaction object (see above) plus create metadata:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `"created"` \| `"duplicate"` | `created` when a new row was inserted; `duplicate` when an existing row was returned (same `idempotencyKey`). |
+| `message` | string | Present when `status` is `duplicate`. Same text as the web app: *"Duplicate SMS ignored: this transaction is already saved."* |
+
+#### Example response (new transaction)
+
+```json
+{
+  "id": "tx_1",
+  "amount": 50,
+  "categoryId": "cat_1",
+  "date": "2026-03-15",
+  "notes": "Lunch",
+  "type": "expense",
+  "status": "created"
+}
+```
+
+#### Example response (duplicate / idempotent replay)
+
+```json
+{
+  "id": "tx_existing",
+  "amount": 60,
+  "categoryId": "cat_1",
+  "date": "2026-05-03",
+  "notes": "UE3L635OYV Confirmed...",
+  "type": "expense",
+  "status": "duplicate",
+  "message": "Duplicate SMS ignored: this transaction is already saved."
+}
+```
+
+Show `message` to the user when `status` is `duplicate`; do not treat it as a new transaction in local lists.
 
 #### Status codes
 
-- `200` success (including idempotent replay of an existing row)
+- `200` success (including idempotent replay of an existing row; check `status` field)
 - `400` invalid payload
 - `401` unauthorized
 - `500` server error

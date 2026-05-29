@@ -329,9 +329,10 @@ function TransactionFormFields({
             ? { fromAccountId, toAccountId }
             : { accountId: accountId || defaultAccount?.id }),
         });
-        const alreadyExists = transactions.some((t) => t.id === created.id);
-        if (alreadyExists) {
-          setSubmitMessage("Duplicate SMS ignored: this transaction is already saved.");
+        if (created.status === "duplicate") {
+          setSubmitMessage(
+            created.message ?? "Duplicate SMS ignored: this transaction is already saved."
+          );
           return;
         }
         onAdded?.(created);
