@@ -257,7 +257,7 @@ Creates a manual transaction for the signed-in user.
 - `accountId` (optional): for `income` / `expense`, defaults to Wallet.
 - `fromAccountId` / `toAccountId` (required for `transfer`): creates two linked legs (`transferLeg` `out` / `in`) with the same `transferGroupId`. Must be different accounts.
 - `notes` (optional): string, defaults to `""`.
-- `idempotencyKey` (optional): string (max 255 chars). When provided, a duplicate request returns the existing transaction instead of inserting again.
+- `idempotencyKey` (optional): string (max 255 chars). When provided, a duplicate request returns the existing transaction instead of inserting again. For SMS saves after `POST /api/sms/preview`, use the preview’s `smsIdempotencyKey` value here (do not generate a new UUID).
 
 #### Example request (expense)
 
@@ -755,7 +755,7 @@ Per-item `status`: `created`, `duplicate`, `ignored`, or `failed`.
 
 ### `POST /api/sms/preview`
 
-Parse one SMS and return a proposed transaction without inserting. Use to prefill a form before `POST /api/transactions`.
+Parse one SMS and return a proposed transaction without inserting. Use to prefill a form before `POST /api/transactions`. When saving, pass `smsIdempotencyKey` from this response as `idempotencyKey` on `POST /api/transactions` so the row dedupes against `POST /api/sms` and prior saves (same formula as the web “Paste SMS” flow).
 
 #### Request body
 
@@ -776,11 +776,16 @@ Same as `POST /api/sms` (`message`, optional `timestamp`, optional `includeFeeIn
     "type": "expense",
     "smsCounterparty": "Shop",
     "smsCounterpartyKey": "shop"
-  }
+  },
+  "smsIdempotencyKey": "sms|expense|50.00|2026-03-15|ABC123XY"
 }
 ```
 
-`status` is `ready` (category resolved), `needs_category` (parsed OK but no category), or `ignored` (`preview` is `null`).
+| Field | Type | Description |
+|-------|------|-------------|
+| `smsIdempotencyKey` | string \| null | Present when the message is actionable (`ready` or `needs_category`). Omitted equivalent: `null` when `ignored`. Pass unchanged as `idempotencyKey` on `POST /api/transactions`. Do not hash on the client—the server hashes on insert. |
+
+`status` is `ready` (category resolved), `needs_category` (parsed OK but no category), or `ignored` (`preview` and `smsIdempotencyKey` are `null`).
 
 #### Status codes
 

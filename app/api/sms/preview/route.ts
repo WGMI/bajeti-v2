@@ -6,6 +6,7 @@ import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
 import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
+import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string };
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
         reason: skipReason,
         parsed: parsedForApi,
         preview: null,
+        smsIdempotencyKey: null,
       });
     }
 
@@ -133,8 +135,17 @@ export async function POST(request: Request) {
         reason: "Message did not match an income, expense, or transfer transaction",
         parsed: parsedForApi,
         preview: null,
+        smsIdempotencyKey: null,
       });
     }
+
+    const smsIdempotencyKey = buildSmsIdempotencyKey({
+      type: transactionType,
+      amount: parsed.amount,
+      date: parsed.date,
+      transactionRef: parsed.transactionRef,
+    });
+
     const preview: PreviewTransaction = {
       amount: parsed.amount,
       categoryId: category?.id ?? null,
@@ -150,6 +161,7 @@ export async function POST(request: Request) {
       reason: category ? null : `No category found for parsed type: ${parsed.type}`,
       parsed: parsedForApi,
       preview,
+      smsIdempotencyKey,
     });
   } catch (e) {
     console.error("[POST /api/sms/preview]", e);
