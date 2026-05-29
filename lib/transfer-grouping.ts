@@ -42,12 +42,19 @@ export async function groupTransferLegIfMatched(input: {
   if (!matched) return null;
 
   const groupId = matched.transfer_group_id ?? randomUUID();
+  const olderId = matched.id < input.transactionId ? matched.id : input.transactionId;
+  const newerId = matched.id < input.transactionId ? input.transactionId : matched.id;
   await sql`
     UPDATE transactions
     SET
       type = ${"transfer"}::category_type,
       category_id = ${input.transferCategoryId},
-      transfer_group_id = ${groupId}
+      transfer_group_id = ${groupId},
+      transfer_leg = CASE
+        WHEN id = ${olderId} THEN 'out'::transfer_leg
+        WHEN id = ${newerId} THEN 'in'::transfer_leg
+        ELSE transfer_leg
+      END
     WHERE user_id = ${input.userId}
       AND id IN (
         SELECT (jsonb_array_elements_text(${JSON.stringify([input.transactionId, matched.id])}::jsonb))::uuid

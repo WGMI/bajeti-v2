@@ -130,6 +130,21 @@ export function TransactionDetailDialog({
             <span className="text-sm text-muted-foreground">Category</span>
             <span className="font-medium">{category?.name ?? "Unknown"}</span>
           </div>
+          {isTransfer && transaction.counterAccountName ? (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-muted-foreground">Accounts</span>
+              <span className="text-right font-medium">
+                {transaction.transferLeg === "in"
+                  ? `${transaction.counterAccountName} → ${transaction.accountName ?? "Account"}`
+                  : `${transaction.accountName ?? "Account"} → ${transaction.counterAccountName}`}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-muted-foreground">Account</span>
+              <span className="font-medium">{transaction.accountName ?? "Wallet"}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-muted-foreground">Type</span>
             <Badge

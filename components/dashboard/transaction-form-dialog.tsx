@@ -40,15 +40,27 @@ interface TransactionFormDialogProps {
 function getInitialValues(
   editingTransaction: Transaction | null | undefined,
   typeLock: CategoryType | null,
-  categories: { id: string; type: string }[]
+  categories: { id: string; type: string }[],
+  defaultAccountId: string
 ) {
   if (editingTransaction) {
+    const isPairedTransfer =
+      editingTransaction.type === "transfer" && editingTransaction.transferGroupId;
+    let fromAccountId = editingTransaction.accountId;
+    let toAccountId = editingTransaction.counterAccountId ?? "";
+    if (isPairedTransfer && editingTransaction.transferLeg === "in") {
+      fromAccountId = editingTransaction.counterAccountId ?? fromAccountId;
+      toAccountId = editingTransaction.accountId;
+    }
     return {
       amount: String(Math.abs(editingTransaction.amount)),
       categoryId: editingTransaction.categoryId,
       type: editingTransaction.type,
       date: editingTransaction.date.slice(0, 10),
       notes: editingTransaction.notes,
+      accountId: editingTransaction.accountId,
+      fromAccountId,
+      toAccountId,
     };
   }
   const firstOfType = typeLock
@@ -60,6 +72,9 @@ function getInitialValues(
     type: typeLock ?? "expense",
     date: new Date().toISOString().slice(0, 10),
     notes: "",
+    accountId: defaultAccountId,
+    fromAccountId: defaultAccountId,
+    toAccountId: "",
   };
 }
 
@@ -76,17 +91,36 @@ function TransactionFormFields({
   onAdded?: (transaction: Transaction) => void;
   onUpdated?: (transaction: Transaction) => void;
 }) {
-  const { categories, transactions, addTransaction, updateTransaction, getCategoryById, refetch } = useBudget();
+  const {
+    accounts,
+    categories,
+    transactions,
+    addTransaction,
+    updateTransaction,
+    getCategoryById,
+    getDefaultAccount,
+    refetch,
+  } = useBudget();
+  const defaultAccount = getDefaultAccount();
   const { smsTransactionDateSource } = useSettings();
   const isEdit = !!editingTransaction;
   const typeLock = initialType ?? editingTransaction?.type ?? null;
 
-  const initial = getInitialValues(editingTransaction, typeLock, categories);
+  const initial = getInitialValues(
+    editingTransaction,
+    typeLock,
+    categories,
+    defaultAccount?.id ?? ""
+  );
   const [amount, setAmount] = useState(initial.amount);
   const [categoryId, setCategoryId] = useState(initial.categoryId);
   const [type, setType] = useState<CategoryType>(initial.type);
   const [date, setDate] = useState(initial.date);
   const [notes, setNotes] = useState(initial.notes);
+  const [accountId, setAccountId] = useState(initial.accountId);
+  const [fromAccountId, setFromAccountId] = useState(initial.fromAccountId);
+  const [toAccountId, setToAccountId] = useState(initial.toAccountId);
+  const isTransferForm = (isEdit ? type : typeLock) === "transfer";
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [categoryQuery, setCategoryQuery] = useState("");
 
@@ -261,6 +295,13 @@ function TransactionFormFields({
     setSubmitMessage(null);
     setSubmitting(true);
     try {
+      if (isTransferForm) {
+        if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) {
+          setSubmitError("Choose two different accounts for the transfer.");
+          return;
+        }
+      }
+
       if (isEdit && editingTransaction) {
         const updated = await updateTransaction(editingTransaction.id, {
           amount: num,
@@ -268,8 +309,14 @@ function TransactionFormFields({
           date,
           notes,
           type: txType,
+          ...(isTransferForm
+            ? { fromAccountId, toAccountId }
+            : { accountId: accountId || defaultAccount?.id }),
         });
         onUpdated?.(updated);
+        if (updated.transferGroupId) {
+          await refetch();
+        }
       } else {
         const created = await addTransaction({
           amount: num,
@@ -278,6 +325,9 @@ function TransactionFormFields({
           notes,
           type: txType,
           idempotencyKey: smsIdempotencyKey ?? undefined,
+          ...(isTransferForm
+            ? { fromAccountId, toAccountId }
+            : { accountId: accountId || defaultAccount?.id }),
         });
         const alreadyExists = transactions.some((t) => t.id === created.id);
         if (alreadyExists) {
@@ -439,6 +489,61 @@ function TransactionFormFields({
               )}
             </div>
           )}
+        </div>
+      )}
+      {isTransferForm ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="from-account">From account</Label>
+            <Select value={fromAccountId} onValueChange={setFromAccountId}>
+              <SelectTrigger id="from-account">
+                {accounts.find((a) => a.id === fromAccountId)?.name ?? "Select account"}
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                    {a.isDefault ? " (default)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="to-account">To account</Label>
+            <Select value={toAccountId} onValueChange={setToAccountId}>
+              <SelectTrigger id="to-account">
+                {accounts.find((a) => a.id === toAccountId)?.name ?? "Select account"}
+              </SelectTrigger>
+              <SelectContent>
+                {accounts
+                  .filter((a) => a.id !== fromAccountId)
+                  .map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                      {a.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="account">Account</Label>
+          <Select value={accountId} onValueChange={setAccountId}>
+            <SelectTrigger id="account">
+              {accounts.find((a) => a.id === accountId)?.name ?? "Wallet"}
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                  {a.isDefault ? " (default)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
       <div className="space-y-2">

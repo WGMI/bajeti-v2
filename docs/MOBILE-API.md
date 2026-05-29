@@ -1,3 +1,4 @@
+
 # Mobile API
 
 Reference for every authenticated API route under `app/api/`. All endpoints require Clerk authentication unless noted.
@@ -7,29 +8,33 @@ Reference for every authenticated API route under `app/api/`. All endpoints requ
 | Method | Path | Section |
 |--------|------|---------|
 | `GET` | `/api/summary` | [Summary](#1-summary-endpoint) |
-| `GET` | `/api/transactions` | [Transactions](#2-transactions-endpoints) |
-| `POST` | `/api/transactions` | [Transactions](#2-transactions-endpoints) |
-| `PATCH` | `/api/transactions/[id]` | [Transactions](#2-transactions-endpoints) |
-| `DELETE` | `/api/transactions/[id]` | [Transactions](#2-transactions-endpoints) |
-| `GET` | `/api/categories` | [Categories](#3-categories-endpoints) |
-| `POST` | `/api/categories` | [Categories](#3-categories-endpoints) |
-| `PATCH` | `/api/categories/[id]` | [Categories](#3-categories-endpoints) |
-| `DELETE` | `/api/categories/[id]` | [Categories](#3-categories-endpoints) |
-| `GET` | `/api/settings/options` | [Settings](#4-settings-endpoints) |
-| `GET` | `/api/settings` | [Settings](#4-settings-endpoints) |
-| `PATCH` | `/api/settings` | [Settings](#4-settings-endpoints) |
-| `GET` | `/api/settings/mobile` | [Settings](#4-settings-endpoints) |
-| `PATCH` | `/api/settings/mobile` | [Settings](#4-settings-endpoints) |
-| `POST` | `/api/sms` | [SMS](#5-sms-endpoints) |
-| `POST` | `/api/sms/bulk` | [SMS](#5-sms-endpoints) |
-| `POST` | `/api/sms/preview` | [SMS](#5-sms-endpoints) |
-| `GET` | `/api/sms/categories` | [SMS](#5-sms-endpoints) |
-| `GET` | `/api/counterparty-messages` | [Counterparty](#6-counterparty-endpoints) |
-| `GET` | `/api/counterparty-rules` | [Counterparty](#6-counterparty-endpoints) |
-| `POST` | `/api/counterparty-rules` | [Counterparty](#6-counterparty-endpoints) |
-| `PATCH` | `/api/counterparty-rules/[id]` | [Counterparty](#6-counterparty-endpoints) |
-| `DELETE` | `/api/counterparty-rules/[id]` | [Counterparty](#6-counterparty-endpoints) |
-| `GET` | `/api/counterparty-suggestions` | [Counterparty](#6-counterparty-endpoints) |
+| `GET` | `/api/accounts` | [Accounts](#2-accounts-endpoints) |
+| `POST` | `/api/accounts` | [Accounts](#2-accounts-endpoints) |
+| `PATCH` | `/api/accounts/[id]` | [Accounts](#2-accounts-endpoints) |
+| `DELETE` | `/api/accounts/[id]` | [Accounts](#2-accounts-endpoints) |
+| `GET` | `/api/transactions` | [Transactions](#3-transactions-endpoints) |
+| `POST` | `/api/transactions` | [Transactions](#3-transactions-endpoints) |
+| `PATCH` | `/api/transactions/[id]` | [Transactions](#3-transactions-endpoints) |
+| `DELETE` | `/api/transactions/[id]` | [Transactions](#3-transactions-endpoints) |
+| `GET` | `/api/categories` | [Categories](#4-categories-endpoints) |
+| `POST` | `/api/categories` | [Categories](#4-categories-endpoints) |
+| `PATCH` | `/api/categories/[id]` | [Categories](#4-categories-endpoints) |
+| `DELETE` | `/api/categories/[id]` | [Categories](#4-categories-endpoints) |
+| `GET` | `/api/settings/options` | [Settings](#5-settings-endpoints) |
+| `GET` | `/api/settings` | [Settings](#5-settings-endpoints) |
+| `PATCH` | `/api/settings` | [Settings](#5-settings-endpoints) |
+| `GET` | `/api/settings/mobile` | [Settings](#5-settings-endpoints) |
+| `PATCH` | `/api/settings/mobile` | [Settings](#5-settings-endpoints) |
+| `POST` | `/api/sms` | [SMS](#6-sms-endpoints) |
+| `POST` | `/api/sms/bulk` | [SMS](#6-sms-endpoints) |
+| `POST` | `/api/sms/preview` | [SMS](#6-sms-endpoints) |
+| `GET` | `/api/sms/categories` | [SMS](#6-sms-endpoints) |
+| `GET` | `/api/counterparty-messages` | [Counterparty](#7-counterparty-endpoints) |
+| `GET` | `/api/counterparty-rules` | [Counterparty](#7-counterparty-endpoints) |
+| `POST` | `/api/counterparty-rules` | [Counterparty](#7-counterparty-endpoints) |
+| `PATCH` | `/api/counterparty-rules/[id]` | [Counterparty](#7-counterparty-endpoints) |
+| `DELETE` | `/api/counterparty-rules/[id]` | [Counterparty](#7-counterparty-endpoints) |
+| `GET` | `/api/counterparty-suggestions` | [Counterparty](#7-counterparty-endpoints) |
 
 Prefer `GET` / `PATCH /api/settings/mobile` on mobile (merged shared + mobile fields). Use `GET` / `PATCH /api/settings` only if you need shared settings without mobile fields.
 
@@ -91,7 +96,58 @@ Returns current-month, all-time, trend, and expense-by-category aggregates in on
 - `401` unauthorized
 - `500` server error
 
-## 2) Transactions endpoints
+## 2) Accounts endpoints
+
+Every transaction belongs to an account. Each user has a default **Wallet** account (created automatically). Account balances are derived from transactions on that account (income adds, expense subtracts; paired transfers move money between accounts).
+
+### Account object
+
+```json
+{
+  "id": "acc_1",
+  "name": "Wallet",
+  "isDefault": true,
+  "balance": 12500.5
+}
+```
+
+`balance` is included on `GET /api/accounts` only.
+
+### `GET /api/accounts`
+
+Lists accounts with balances, default first.
+
+#### Status codes
+
+- `200` success
+- `401` unauthorized
+- `500` server error
+
+### `POST /api/accounts`
+
+#### Request body
+
+- `name` (required): non-empty string. Cannot be `Wallet` (reserved for the default account).
+
+#### Response
+
+Returns the created account with `balance: 0`.
+
+### `PATCH /api/accounts/[id]`
+
+#### Request body
+
+- `name` (required): new name. The default Wallet account cannot be renamed.
+
+### `DELETE /api/accounts/[id]`
+
+Deletes a non-default account. Its transactions are reassigned to Wallet.
+
+The default Wallet account cannot be deleted.
+
+---
+
+## 3) Transactions endpoints
 
 ### Transaction object
 
@@ -101,16 +157,27 @@ List responses wrap rows in `transactions`; create/update return a single object
 {
   "id": "tx_1",
   "amount": 50,
+  "accountId": "acc_1",
+  "accountName": "Wallet",
   "categoryId": "cat_1",
   "categoryName": "Food",
   "category": { "id": "cat_1", "name": "Food" },
   "date": "2026-03-15",
   "notes": "Lunch",
   "type": "expense",
+  "transferGroupId": null,
+  "transferLeg": null,
+  "counterAccountId": null,
+  "counterAccountName": null,
   "smsCounterparty": null,
   "smsCounterpartyKey": null
 }
 ```
+
+- `accountId` / `accountName`: account this row belongs to.
+- `transferGroupId`: shared UUID when two transfer legs form one move (optional).
+- `transferLeg`: `out` (money leaves `accountId`) or `in` (money enters `accountId`) for paired transfers.
+- `counterAccountId` / `counterAccountName`: the other account in a paired transfer (when present).
 
 Each transaction includes the category **name** in `categoryName` and in `category.name`. Use `categoryId` (or `category.id`) only when you need the UUID. Do not map `categoryId` to a UI field called `category` and expect a label — that value is always an id.
 
@@ -125,6 +192,7 @@ Returns the signed-in user's transactions, newest first. Use this for transactio
 - `limit` (optional): page size, 1–100, default `20`. Passing `limit` or `cursor` enables pagination.
 - `cursor` (optional): opaque cursor from a previous response (`date|id`, e.g. `2026-03-15|abc123`).
 - `type` (optional): `income`, `expense`, or `transfer`.
+- `accountId` (optional): filter to one account.
 - `dateFrom` / `dateTo` (optional): `YYYY-MM-DD` inclusive range.
 - `search` (optional): case-insensitive match on transaction notes or category name.
 
@@ -186,20 +254,39 @@ Creates a manual transaction for the signed-in user.
 - `categoryId` (required): category UUID owned by the user.
 - `date` (required): `YYYY-MM-DD`.
 - `type` (required): `income`, `expense`, or `transfer`.
+- `accountId` (optional): for `income` / `expense`, defaults to Wallet.
+- `fromAccountId` / `toAccountId` (required for `transfer`): creates two linked legs (`transferLeg` `out` / `in`) with the same `transferGroupId`. Must be different accounts.
 - `notes` (optional): string, defaults to `""`.
 - `idempotencyKey` (optional): string (max 255 chars). When provided, a duplicate request returns the existing transaction instead of inserting again.
 
-#### Example request
+#### Example request (expense)
 
 ```json
 {
   "amount": 50,
+  "accountId": "acc_1",
   "categoryId": "cat_1",
   "date": "2026-03-15",
   "type": "expense",
   "notes": "Lunch"
 }
 ```
+
+#### Example request (transfer)
+
+```json
+{
+  "amount": 200,
+  "fromAccountId": "acc_wallet",
+  "toAccountId": "acc_savings",
+  "categoryId": "cat_transfer",
+  "date": "2026-03-15",
+  "type": "transfer",
+  "notes": "Monthly savings"
+}
+```
+
+Returns the **out** leg (`transferLeg: "out"`). Fetch the list or filter by `transferGroupId` to show both legs.
 
 #### Response shape
 
@@ -216,6 +303,8 @@ Returns a single transaction object (see above).
 
 Updates an existing transaction. All fields in the body are required (same as create, except `idempotencyKey` is not used).
 
+For rows with a `transferGroupId`, send `fromAccountId` and `toAccountId` to update both legs atomically.
+
 #### Example request
 
 `PATCH /api/transactions/tx_1`
@@ -223,6 +312,7 @@ Updates an existing transaction. All fields in the body are required (same as cr
 ```json
 {
   "amount": 55,
+  "accountId": "acc_1",
   "categoryId": "cat_1",
   "date": "2026-03-15",
   "type": "expense",
@@ -244,7 +334,7 @@ Returns the updated transaction object.
 
 ### `DELETE /api/transactions/[id]`
 
-Deletes a transaction owned by the signed-in user.
+Deletes a transaction owned by the signed-in user. If the row is part of a paired transfer (`transferGroupId` set), both legs are deleted.
 
 #### Example request
 
@@ -253,7 +343,7 @@ Deletes a transaction owned by the signed-in user.
 #### Response shape
 
 ```json
-{ "ok": true }
+{ "ok": true, "deletedIds": ["tx_1", "tx_2"] }
 ```
 
 #### Status codes
@@ -263,7 +353,7 @@ Deletes a transaction owned by the signed-in user.
 - `404` transaction not found
 - `500` server error
 
-## 3) Categories endpoints
+## 4) Categories endpoints
 
 Use these to populate category pickers when creating or editing transactions (`categoryId` on `POST` / `PATCH /api/transactions`).
 
@@ -402,7 +492,7 @@ If the category has transactions, send a JSON body with one of:
 - `409` category has transactions (body omitted or neither option provided); response includes `transactionCount`
 - `500` server error
 
-## 4) Settings endpoints
+## 5) Settings endpoints
 
 ### `GET /api/settings/options`
 
@@ -530,9 +620,9 @@ Before using `/api/settings/mobile`, run:
 
 `psql $DATABASE_URL -f scripts/migrate-user-mobile-settings.sql`
 
-## 5) SMS endpoints
+## 6) SMS endpoints
 
-SMS routes parse M-PESA-style messages (`lib/sms-parser.ts`), apply counterparty category rules when present, and create transactions with idempotency. Transfer-classified SMS are currently not inserted (status `ignored`). See also `docs/SMS-API-MOBILE.md` for mobile client integration notes.
+SMS routes parse M-PESA-style messages (`lib/sms-parser.ts`), apply counterparty category rules when present, and create transactions on the default Wallet account with idempotency. Transfer-classified SMS are inserted as single legs; when a matching second leg exists (same date, amount, shared reference in notes), both rows are linked with a shared `transferGroupId` and `transferLeg` `out`/`in`. See also `docs/SMS-API-MOBILE.md` for mobile client integration notes.
 
 ### Parsed object (`parsed`)
 
@@ -713,7 +803,7 @@ JSON array of category objects (see [Categories](#3-categories-endpoints)).
 - `401` unauthorized
 - `500` server error
 
-## 6) Counterparty endpoints
+## 7) Counterparty endpoints
 
 Counterparty keys come from SMS parsing (`counterpartyKey` on transactions). Rules map a payee/payer key + transaction type to a category; saving a rule also updates matching existing transactions.
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Category, CategoryType, Transaction } from "./budget-types";
+import type { Account, Category, Transaction } from "./budget-types";
 
 const API = "/api";
 
@@ -19,6 +19,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 interface BudgetState {
+  accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   loading: boolean;
@@ -26,11 +27,27 @@ interface BudgetState {
 }
 
 interface BudgetActions {
-  addTransaction: (
-    tx: Omit<Transaction, "id"> & { idempotencyKey?: string }
+  addTransaction: (tx: {
+    amount: number;
+    categoryId: string;
+    date: string;
+    notes: string;
+    type: Transaction["type"];
+    accountId?: string;
+    fromAccountId?: string;
+    toAccountId?: string;
+    idempotencyKey?: string;
+  }) => Promise<Transaction>;
+  updateTransaction: (
+    id: string,
+    tx: Partial<Transaction> & { fromAccountId?: string; toAccountId?: string }
   ) => Promise<Transaction>;
-  updateTransaction: (id: string, tx: Partial<Transaction>) => Promise<Transaction>;
   deleteTransaction: (id: string) => Promise<void>;
+  addAccount: (name: string) => Promise<Account>;
+  updateAccount: (id: string, name: string) => Promise<Account>;
+  deleteAccount: (id: string) => Promise<void>;
+  getAccountById: (id: string) => Account | undefined;
+  getDefaultAccount: () => Account | undefined;
   addCategory: (cat: Omit<Category, "id">) => Promise<void>;
   updateCategory: (id: string, cat: Partial<Pick<Category, "name" | "type">>) => Promise<void>;
   deleteCategory: (
@@ -46,6 +63,7 @@ type BudgetContextValue = BudgetState & BudgetActions;
 const BudgetContext = createContext<BudgetContextValue | null>(null);
 
 export function BudgetProvider({ children }: { children: React.ReactNode }) {
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,14 +73,17 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [cats, txRes] = await Promise.all([
+      const [accts, cats, txRes] = await Promise.all([
+        fetchJson<Account[]>(`${API}/accounts`),
         fetchJson<Category[]>(`${API}/categories`),
         fetchJson<{ transactions: Transaction[]; nextCursor: string | null }>(`${API}/transactions`),
       ]);
+      setAccounts(accts);
       setCategories(cats);
       setTransactions(txRes.transactions);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
+      setAccounts([]);
       setCategories([]);
       setTransactions([]);
     } finally {
@@ -75,12 +96,19 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, [fetchData]);
 
   const addTransaction = useCallback(
-    async (tx: Omit<Transaction, "id"> & { idempotencyKey?: string }) => {
+    async (tx: Parameters<BudgetActions["addTransaction"]>[0]) => {
       const created = await fetchJson<Transaction>(`${API}/transactions`, {
         method: "POST",
         body: JSON.stringify(tx),
       });
-      setTransactions((prev) => (prev.some((t) => t.id === created.id) ? prev : [created, ...prev]));
+      if (created.transferGroupId) {
+        const txRes = await fetchJson<{ transactions: Transaction[] }>(`${API}/transactions`);
+        setTransactions(txRes.transactions);
+      } else {
+        setTransactions((prev) =>
+          prev.some((t) => t.id === created.id) ? prev : [created, ...prev]
+        );
+      }
       return created;
     },
     []
@@ -101,9 +129,39 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const deleteTransaction = useCallback(async (id: string) => {
-    await fetchJson(`${API}/transactions/${id}`, { method: "DELETE" });
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    const res = await fetchJson<{ ok: boolean; deletedIds?: string[] }>(
+      `${API}/transactions/${id}`,
+      { method: "DELETE" }
+    );
+    const ids = new Set(res.deletedIds ?? [id]);
+    setTransactions((prev) => prev.filter((t) => !ids.has(t.id)));
   }, []);
+
+  const addAccount = useCallback(async (name: string) => {
+    const created = await fetchJson<Account>(`${API}/accounts`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    setAccounts((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    return created;
+  }, []);
+
+  const updateAccount = useCallback(async (id: string, name: string) => {
+    const updated = await fetchJson<Account>(`${API}/accounts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+    setAccounts((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, ...updated } : a))
+    );
+    return updated;
+  }, []);
+
+  const deleteAccount = useCallback(async (id: string) => {
+    await fetchJson(`${API}/accounts/${id}`, { method: "DELETE" });
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    await fetchData();
+  }, [fetchData]);
 
   const addCategory = useCallback(
     async (cat: Omit<Category, "id">) => {
@@ -154,8 +212,19 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     [categories]
   );
 
+  const getAccountById = useCallback(
+    (id: string) => accounts.find((a) => a.id === id),
+    [accounts]
+  );
+
+  const getDefaultAccount = useCallback(
+    () => accounts.find((a) => a.isDefault) ?? accounts[0],
+    [accounts]
+  );
+
   const value = useMemo<BudgetContextValue>(
     () => ({
+      accounts,
       categories,
       transactions,
       loading,
@@ -163,13 +232,19 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       addTransaction,
       updateTransaction,
       deleteTransaction,
+      addAccount,
+      updateAccount,
+      deleteAccount,
       addCategory,
       updateCategory,
       deleteCategory,
       getCategoryById,
+      getAccountById,
+      getDefaultAccount,
       refetch: fetchData,
     }),
     [
+      accounts,
       categories,
       transactions,
       loading,
@@ -177,10 +252,15 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       addTransaction,
       updateTransaction,
       deleteTransaction,
+      addAccount,
+      updateAccount,
+      deleteAccount,
       addCategory,
       updateCategory,
       deleteCategory,
       getCategoryById,
+      getAccountById,
+      getDefaultAccount,
       fetchData,
     ]
   );

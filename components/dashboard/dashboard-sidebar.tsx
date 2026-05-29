@@ -10,6 +10,7 @@ import {
   PiggyBank,
   Settings,
   Tag,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/dashboard/transactions", icon: Receipt, label: "Transactions" },
   { href: "/dashboard/monthly", icon: Calendar, label: "Monthly view" },
   { href: "/dashboard/categories", icon: FolderTree, label: "Categories" },
+  { href: "/dashboard/accounts", icon: Wallet, label: "Accounts" },
   { href: "/dashboard/rules", icon: Tag, label: "Rules" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];

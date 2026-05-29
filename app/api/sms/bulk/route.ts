@@ -10,34 +10,10 @@ import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { parseAmountForStorage } from "@/lib/transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
-import { normalizeTransactionDateFromDb } from "@/lib/format-date";
-import { normalizeStoredAmount } from "@/lib/transaction-amount";
+import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 
 type CategoryRow = { id: string; name: string; type: string };
-type TransactionRow = {
-  id: string;
-  amount: string;
-  category_id: string;
-  date: string;
-  notes: string | null;
-  type: string;
-  sms_counterparty: string | null;
-  sms_counterparty_key: string | null;
-};
-
-function rowToTransaction(row: TransactionRow) {
-  return {
-    id: row.id,
-    amount: normalizeStoredAmount(Number(row.amount)),
-    categoryId: row.category_id,
-    date: normalizeTransactionDateFromDb(row.date),
-    notes: row.notes ?? "",
-    type: row.type as CategoryType,
-    smsCounterparty: row.sms_counterparty,
-    smsCounterpartyKey: row.sms_counterparty_key,
-  };
-}
-
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -219,9 +195,6 @@ export async function POST(request: Request) {
         let skipReason: string | null = null;
         if (effectiveType === "neither") {
           skipReason = "Message did not match an income, expense, or transfer transaction";
-        } else if (effectiveType === "transfer") {
-          // Stopgap: prevent transfer-classified SMS from creating DB transactions.
-          skipReason = "Transfer messages are temporarily ignored";
         } else if (parsed.amount <= 0) {
           skipReason = "Parsed transaction amount is missing or invalid";
         } else if (!parsed.date) {
@@ -278,85 +251,33 @@ export async function POST(request: Request) {
           })
         );
 
-        const existingRows = await sql`
-          SELECT id, amount, category_id, date::text AS date, notes, type,
-            sms_counterparty, sms_counterparty_key
-          FROM transactions
-          WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
-          LIMIT 1
-        `;
-        const existing = existingRows[0] as TransactionRow | undefined;
-        if (existing) {
+        const transferCategoryId =
+          transactionType === "transfer"
+            ? categoryRows.find((c) => c.type === "transfer")?.id ?? category.id
+            : null;
+
+        const created = await insertSmsTransaction({
+          userId,
+          amount: storedAmount,
+          categoryId: category.id,
+          date: parsed.date,
+          message: parsed.message,
+          transactionType,
+          smsIdempotencyKey,
+          rawMessageHash,
+          counterparty: parsed.counterparty,
+          counterpartyKey: parsed.counterpartyKey,
+          transferCategoryId,
+        });
+
+        if (!created) {
           results.push({
             index: i,
-            status: "duplicate",
+            status: "ignored",
             transactionCreated: false,
-            reason: "SMS already processed",
+            reason: "SMS already processed (duplicate)",
             parsed: parsedForResponse,
-            transaction: rowToTransaction(existing),
           });
-          continue;
-        }
-
-        const rows = await sql`
-          INSERT INTO transactions (
-            user_id,
-            amount,
-            category_id,
-            date,
-            notes,
-            type,
-            sms_idempotency_key,
-            sms_raw_hash,
-            sms_counterparty,
-            sms_counterparty_key
-          )
-          VALUES (
-            ${userId},
-            ${storedAmount},
-            ${category.id},
-            ${parsed.date},
-            ${parsed.message},
-            ${transactionType}::category_type,
-            ${smsIdempotencyKey},
-            ${rawMessageHash},
-            ${parsed.counterparty},
-            ${parsed.counterpartyKey}
-          )
-          ON CONFLICT DO NOTHING
-          RETURNING id, amount, category_id, date::text AS date, notes, type,
-            sms_counterparty, sms_counterparty_key
-        `;
-
-        const row = rows[0] as TransactionRow | undefined;
-        if (!row) {
-          // Highly likely a unique-index conflict: treat as duplicate.
-          const existingRowsAfterConflict = await sql`
-            SELECT id, amount, category_id, date::text AS date, notes, type,
-              sms_counterparty, sms_counterparty_key
-            FROM transactions
-            WHERE user_id = ${userId} AND sms_idempotency_key = ${smsIdempotencyKey}
-            LIMIT 1
-          `;
-          const existingAfterConflict = existingRowsAfterConflict[0] as TransactionRow | undefined;
-          if (existingAfterConflict) {
-            results.push({
-              index: i,
-              status: "duplicate",
-              transactionCreated: false,
-              reason: "SMS already processed",
-              parsed: parsedForResponse,
-              transaction: rowToTransaction(existingAfterConflict),
-            });
-          } else {
-            results.push({
-              index: i,
-              status: "failed",
-              transactionCreated: false,
-              reason: "Insert returned no row and no existing transaction found after conflict",
-              parsed: parsedForResponse,
-            });
-          }
           continue;
         }
 
@@ -365,7 +286,7 @@ export async function POST(request: Request) {
           status: "created",
           transactionCreated: true,
           parsed: parsedForResponse,
-          transaction: rowToTransaction(row),
+          transaction: created,
         });
       } catch (e) {
         results.push({

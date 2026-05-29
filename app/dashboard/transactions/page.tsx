@@ -610,7 +610,11 @@ function TransactionsPageContent() {
                         key={tx.id}
                         categoryInitial={category?.name?.slice(0, 1) ?? "?"}
                         categoryName={category?.name ?? "Unknown"}
-                        subtitle={tx.notes || tx.date}
+                        subtitle={
+                          tx.type === "transfer" && tx.counterAccountName
+                            ? `${tx.accountName ?? "Account"} → ${tx.counterAccountName}`
+                            : [tx.accountName, tx.notes || tx.date].filter(Boolean).join(" · ")
+                        }
                         dateLabel={formatDateWithPreference(tx.date, dateFormat)}
                         type={tx.type}
                         amountFormatted={formatCurrencyWithSign(tx.amount, currency, tx.type)}
