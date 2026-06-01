@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
+import { TransactionSubtitle } from "@/components/dashboard/transaction-subtitle";
 import { SortButton } from "@/components/dashboard/sort-button";
 import { Pencil, Trash2, ArrowRight, Loader2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
@@ -165,7 +166,12 @@ export function RecentTransactionsCard() {
                       key={tx.id}
                       categoryInitial={category?.name?.slice(0, 1) ?? "?"}
                       categoryName={category?.name ?? "Unknown"}
-                      subtitle={tx.notes || tx.date}
+                      subtitle={
+                        <TransactionSubtitle
+                          transaction={tx}
+                          secondary={tx.notes || formatDateWithPreference(tx.date, dateFormat)}
+                        />
+                      }
                       dateLabel={formatDateWithPreference(tx.date, dateFormat)}
                       type={tx.type}
                       amountFormatted={formatCurrencyWithSign(tx.amount, currency, tx.type)}

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 export type TransactionRowProps = {
   categoryInitial: string;
   categoryName: string;
-  subtitle: string;
+  subtitle: ReactNode;
   dateLabel: string;
   type: "income" | "expense" | "transfer";
   amountFormatted: string;
@@ -86,7 +86,7 @@ export function TransactionRow({
           {avatar}
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="truncate font-medium">{categoryName}</p>
-            <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
+            <div className="min-w-0 overflow-hidden text-sm text-muted-foreground">{subtitle}</div>
             <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground tabular-nums">{dateLabel}</span>
               {typeBadge}
@@ -106,7 +106,7 @@ export function TransactionRow({
         {avatar}
         <div className="min-w-0">
           <p className="truncate font-medium">{categoryName}</p>
-          <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
+          <div className="min-w-0 overflow-hidden text-sm text-muted-foreground">{subtitle}</div>
         </div>
         <div className="min-w-0 truncate text-left text-sm text-muted-foreground tabular-nums">
           {dateLabel}

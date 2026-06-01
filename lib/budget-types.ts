@@ -8,6 +8,10 @@ export interface Account {
   isDefault?: boolean;
   /** Present on list API when balances are computed. */
   balance?: number;
+  /** Money in (income + transfer in), from list API. */
+  totalIn?: number;
+  /** Money out (expenses + transfer out), from list API. */
+  totalOut?: number;
 }
 
 export interface Category {

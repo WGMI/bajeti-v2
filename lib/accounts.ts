@@ -77,12 +77,26 @@ export async function listAccountsForUser(userId: string) {
           WHEN t.type = 'transfer' AND t.transfer_leg = 'out' THEN -ABS(t.amount)
           ELSE 0
         END
-      ), 0)::text AS balance
+      ), 0)::text AS balance,
+      COALESCE(SUM(
+        CASE
+          WHEN t.type = 'income' THEN ABS(t.amount)
+          WHEN t.type = 'transfer' AND t.transfer_leg = 'in' THEN ABS(t.amount)
+          ELSE 0
+        END
+      ), 0)::text AS total_in,
+      COALESCE(SUM(
+        CASE
+          WHEN t.type = 'expense' THEN ABS(t.amount)
+          WHEN t.type = 'transfer' AND t.transfer_leg = 'out' THEN ABS(t.amount)
+          ELSE 0
+        END
+      ), 0)::text AS total_out
     FROM accounts a
     LEFT JOIN transactions t ON t.account_id = a.id AND t.user_id = ${userId}
     WHERE a.user_id = ${userId}
     GROUP BY a.id, a.name, a.is_default
     ORDER BY a.is_default DESC, a.name ASC
   `;
-  return rows as Array<AccountRow & { balance: string }>;
+  return rows as Array<AccountRow & { balance: string; total_in: string; total_out: string }>;
 }

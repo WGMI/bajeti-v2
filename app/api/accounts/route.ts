@@ -14,6 +14,8 @@ export async function GET() {
       rows.map((row) => ({
         ...rowToAccount(row),
         balance: Number(row.balance ?? 0),
+        totalIn: Number(row.total_in ?? 0),
+        totalOut: Number(row.total_out ?? 0),
       }))
     );
   } catch (e) {

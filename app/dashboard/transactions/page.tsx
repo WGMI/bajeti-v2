@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, Loader2, Filter, Search, X } from "lucide-react";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
+import { TransactionSubtitle } from "@/components/dashboard/transaction-subtitle";
 import { SortButton } from "@/components/dashboard/sort-button";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
@@ -86,6 +87,7 @@ type TransactionFilters = {
   dateFrom: string;
   dateTo: string;
   search: string;
+  accountId: string;
 };
 
 function transactionFilterParams(filters: TransactionFilters): URLSearchParams {
@@ -94,6 +96,7 @@ function transactionFilterParams(filters: TransactionFilters): URLSearchParams {
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
   if (filters.search.trim()) params.set("search", filters.search.trim());
+  if (filters.accountId) params.set("accountId", filters.accountId);
   return params;
 }
 
@@ -127,7 +130,7 @@ async function fetchAllTransactions(filters: TransactionFilters): Promise<Transa
 
 function TransactionsPageContent() {
   const searchParams = useSearchParams();
-  const { getCategoryById, deleteTransaction } = useBudget();
+  const { accounts, getCategoryById, deleteTransaction } = useBudget();
   const { currency, dateFormat } = useSettings();
   const [list, setList] = useState<Transaction[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -145,6 +148,7 @@ function TransactionsPageContent() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") ?? "");
+  const [accountFilter, setAccountFilter] = useState(() => searchParams.get("accountId") ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState(""); // local value for controlled input; applied on blur/enter
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -175,13 +179,16 @@ function TransactionsPageContent() {
     dateFrom !== "" ||
     dateTo !== "" ||
     searchQuery !== "" ||
+    accountFilter !== "" ||
     selectedCategoryId != null;
   const activeFilterCount =
     Number(typeFilter !== "all") +
     Number(dateFrom !== "") +
     Number(dateTo !== "") +
     Number(searchQuery !== "") +
+    Number(accountFilter !== "") +
     Number(selectedCategoryId != null);
+  const selectedAccount = accounts.find((a) => a.id === accountFilter);
 
   const sortedList = useMemo(() => {
     return [...list].sort((a, b) => {
@@ -218,7 +225,13 @@ function TransactionsPageContent() {
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
+    const currentFilters = {
+      type: typeFilter,
+      dateFrom,
+      dateTo,
+      search: searchQuery,
+      accountId: accountFilter,
+    };
     try {
       const data = await fetchTransactionsPage(PAGE_SIZE, null, currentFilters);
       setList(data.transactions);
@@ -234,12 +247,18 @@ function TransactionsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, dateFrom, dateTo, searchQuery]);
+  }, [typeFilter, dateFrom, dateTo, searchQuery, accountFilter]);
 
   const loadMore = useCallback(async () => {
     if (!canAutoLoadMore || !nextCursor || loadingMore) return;
     setLoadingMore(true);
-    const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
+    const currentFilters = {
+      type: typeFilter,
+      dateFrom,
+      dateTo,
+      search: searchQuery,
+      accountId: accountFilter,
+    };
     try {
       const data = await fetchTransactionsPage(PAGE_SIZE, nextCursor, currentFilters);
       setList((prev) => [...prev, ...data.transactions]);
@@ -251,12 +270,27 @@ function TransactionsPageContent() {
     } finally {
       setLoadingMore(false);
     }
-  }, [canAutoLoadMore, nextCursor, loadingMore, typeFilter, dateFrom, dateTo, searchQuery]);
+  }, [
+    canAutoLoadMore,
+    nextCursor,
+    loadingMore,
+    typeFilter,
+    dateFrom,
+    dateTo,
+    searchQuery,
+    accountFilter,
+  ]);
 
   const loadAllForSort = useCallback(async () => {
     if (!nextCursor || loadingAllForSort) return;
     setLoadingAllForSort(true);
-    const currentFilters = { type: typeFilter, dateFrom, dateTo, search: searchQuery };
+    const currentFilters = {
+      type: typeFilter,
+      dateFrom,
+      dateTo,
+      search: searchQuery,
+      accountId: accountFilter,
+    };
     try {
       const data = await fetchAllTransactions(currentFilters);
       setList(data.transactions);
@@ -268,7 +302,7 @@ function TransactionsPageContent() {
     } finally {
       setLoadingAllForSort(false);
     }
-  }, [nextCursor, loadingAllForSort, typeFilter, dateFrom, dateTo, searchQuery]);
+  }, [nextCursor, loadingAllForSort, typeFilter, dateFrom, dateTo, searchQuery, accountFilter]);
 
   useEffect(() => {
     loadFirstPage();
@@ -283,8 +317,10 @@ function TransactionsPageContent() {
   useEffect(() => {
     const from = searchParams.get("dateFrom") ?? "";
     const to = searchParams.get("dateTo") ?? "";
+    const accountId = searchParams.get("accountId") ?? "";
     setDateFrom(from);
     setDateTo(to);
+    setAccountFilter(accountId);
   }, [searchParams]);
 
   useEffect(() => {
@@ -370,6 +406,7 @@ function TransactionsPageContent() {
     setTypeFilter("all");
     setDateFrom("");
     setDateTo("");
+    setAccountFilter("");
     setSearchQuery("");
     setSearchInput("");
     setSelectedCategoryId(null);
@@ -384,7 +421,9 @@ function TransactionsPageContent() {
       <div className="min-w-0 space-y-6">
         <Card className="min-w-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between p-4 pb-4 sm:p-6 sm:pb-4">
-            <CardTitle className="text-base font-medium">All Transactions</CardTitle>
+            <CardTitle className="text-base font-medium">
+              {selectedAccount ? `${selectedAccount.name} transactions` : "All Transactions"}
+            </CardTitle>
           </CardHeader>
           {showCategoryCharts && (
             <div className="grid grid-cols-1 gap-6 border-b border-border/50 px-4 pt-4 pb-3 sm:grid-cols-2 sm:px-6">
@@ -496,6 +535,29 @@ function TransactionsPageContent() {
                     className="h-9 w-full pl-8 pr-4"
                   />
                 </div>
+              </div>
+              <div className="space-y-1.5 sm:min-w-[160px]">
+                <Label className="text-xs text-muted-foreground">Account</Label>
+                <Select
+                  value={accountFilter || "all"}
+                  onValueChange={(v) => setAccountFilter(v === "all" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9 w-full sm:w-[160px]">
+                    <span className="truncate">
+                      {accountFilter
+                        ? (selectedAccount?.name ?? "Account")
+                        : "All accounts"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All accounts</SelectItem>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Type</Label>
@@ -611,9 +673,10 @@ function TransactionsPageContent() {
                         categoryInitial={category?.name?.slice(0, 1) ?? "?"}
                         categoryName={category?.name ?? "Unknown"}
                         subtitle={
-                          tx.type === "transfer" && tx.counterAccountName
-                            ? `${tx.accountName ?? "Account"} → ${tx.counterAccountName}`
-                            : [tx.accountName, tx.notes || tx.date].filter(Boolean).join(" · ")
+                          <TransactionSubtitle
+                            transaction={tx}
+                            secondary={tx.notes || formatDateWithPreference(tx.date, dateFormat)}
+                          />
                         }
                         dateLabel={formatDateWithPreference(tx.date, dateFormat)}
                         type={tx.type}
