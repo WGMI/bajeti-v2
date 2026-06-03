@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       ` as CategoryRow[];
     }
 
-    const category = await resolveCategoryForSmsIngestion(
+    const { category } = await resolveCategoryForSmsIngestion(
       userId,
       { ...parsed, type: effectiveType },
       categoryRows

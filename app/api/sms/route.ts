@@ -134,7 +134,7 @@ export async function POST(request: Request) {
       ` as CategoryRow[];
     }
 
-    const category = await resolveCategoryForSmsIngestion(
+    const { category, transferToAccountId } = await resolveCategoryForSmsIngestion(
       userId,
       { ...parsed, type: effectiveType },
       categoryRows
@@ -224,6 +224,7 @@ export async function POST(request: Request) {
       counterparty: parsed.counterparty,
       counterpartyKey: parsed.counterpartyKey,
       transferCategoryId,
+      transferToAccountId,
       transactionCharges: parsed.charges,
     });
 

@@ -9,6 +9,12 @@ import {
   splitScopedCounterpartyKey,
 } from "@/lib/sms-parser";
 import type { CategoryType } from "@/lib/budget-types";
+import {
+  applyTransferDestinationToTransactionIds,
+  parseTransferToAccountIdFromBody,
+  validateTransferToAccountId,
+} from "@/lib/counterparty-transfer-accounts";
+import { listAccountsForUser } from "@/lib/accounts";
 
 type TxRow = {
   id: string;
@@ -43,15 +49,22 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
+    const accountRows = await listAccountsForUser(userId);
+    const defaultAccountId =
+      accountRows.find((a) => a.is_default)?.id ?? accountRows[0]?.id ?? null;
+
     const rows = (await sql`
       SELECT
         r.id,
         r.counterparty_key,
         r.transaction_type::text AS transaction_type,
         r.category_id,
-        c.name AS category_name
+        r.transfer_to_account_id,
+        c.name AS category_name,
+        ta.name AS transfer_to_account_name
       FROM counterparty_category_rules r
       INNER JOIN categories c ON c.id = r.category_id AND c.user_id = ${userId}
+      LEFT JOIN accounts ta ON ta.id = r.transfer_to_account_id AND ta.user_id = ${userId}
       WHERE r.user_id = ${userId}
       ORDER BY r.transaction_type, c.name, r.counterparty_key
     `) as {
@@ -60,6 +73,8 @@ export async function GET() {
       transaction_type: string;
       category_id: string;
       category_name: string;
+      transfer_to_account_id: string | null;
+      transfer_to_account_name: string | null;
     }[];
 
     const rules = rows.map((row) => ({
@@ -68,6 +83,16 @@ export async function GET() {
       transactionType: row.transaction_type as CategoryType,
       categoryId: row.category_id,
       categoryName: row.category_name,
+      transferToAccountId:
+        row.transaction_type === "transfer"
+          ? row.transfer_to_account_id ?? defaultAccountId
+          : null,
+      transferToAccountName:
+        row.transaction_type === "transfer"
+          ? row.transfer_to_account_name ??
+            accountRows.find((a) => a.id === defaultAccountId)?.name ??
+            "Wallet"
+          : null,
     }));
     console.log("[GET /api/counterparty-rules] rules snapshot", {
       userId,
@@ -88,7 +113,8 @@ export async function GET() {
  * POST /api/counterparty-rules
  * Saves a payee/payer → category mapping and updates all matching transactions for this user.
  *
- * Body: { counterpartyKey, counterpartyLabel?, transactionType, categoryId }
+ * Body: { counterpartyKey, counterpartyLabel?, transactionType, categoryId, transferToAccountId? }
+ * For transfer rules, transferToAccountId is optional (omit or null = default Wallet).
  */
 export async function POST(request: Request) {
   const { userId } = await auth();
@@ -99,7 +125,12 @@ export async function POST(request: Request) {
     const body = await request.json();
     const counterpartyKeyRaw = body.counterpartyKey;
     const categoryId = body.categoryId;
-    const transactionType = body.transactionType;
+    const transactionType = body.transactionType as CategoryType;
+    const transferToAccountIdParsed = parseTransferToAccountIdFromBody(
+      body as Record<string, unknown>,
+      transactionType,
+      { missingFieldMeans: "default" }
+    );
     const counterpartyLabel =
       typeof body.counterpartyLabel === "string" ? body.counterpartyLabel.trim() : "";
 
@@ -137,21 +168,43 @@ export async function POST(request: Request) {
       );
     }
 
+    let transferToAccountId: string | null = null;
+    if (transactionType === "transfer") {
+      if (transferToAccountIdParsed === undefined) {
+        return NextResponse.json({ error: "Invalid transferToAccountId" }, { status: 400 });
+      }
+      try {
+        transferToAccountId = await validateTransferToAccountId(
+          userId,
+          transferToAccountIdParsed
+        );
+      } catch {
+        return NextResponse.json(
+          { error: "Transfer destination account not found" },
+          { status: 400 }
+        );
+      }
+    }
+
     await sql`
       INSERT INTO counterparty_category_rules (
         user_id,
         counterparty_key,
         transaction_type,
-        category_id
+        category_id,
+        transfer_to_account_id
       )
       VALUES (
         ${userId},
         ${counterpartyKey},
         ${transactionType}::category_type,
-        ${categoryId}
+        ${categoryId},
+        ${transferToAccountId}
       )
       ON CONFLICT (user_id, counterparty_key, transaction_type)
-      DO UPDATE SET category_id = EXCLUDED.category_id
+      DO UPDATE SET
+        category_id = EXCLUDED.category_id,
+        transfer_to_account_id = EXCLUDED.transfer_to_account_id
     `;
 
     const allRows = (await sql`
@@ -191,6 +244,14 @@ export async function POST(request: Request) {
             SELECT (jsonb_array_elements_text(${JSON.stringify(matchingIds)}::jsonb))::uuid
           )
       `;
+      if (transactionType === "transfer") {
+        await applyTransferDestinationToTransactionIds({
+          userId,
+          transactionIds: matchingIds,
+          transferToAccountId,
+          categoryId,
+        });
+      }
       updatedRows = (await sql`
         SELECT id, amount, category_id, date::text AS date, notes, type::text AS type,
           sms_counterparty, sms_counterparty_key

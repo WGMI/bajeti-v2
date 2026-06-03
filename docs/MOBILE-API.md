@@ -932,11 +932,15 @@ Lists all saved counterparty → category rules for the user.
       "counterpartyKey": "john-doe",
       "transactionType": "expense",
       "categoryId": "cat_1",
-      "categoryName": "Food"
+      "categoryName": "Food",
+      "transferToAccountId": null,
+      "transferToAccountName": null
     }
   ]
 }
 ```
+
+For `transactionType` `transfer`, `transferToAccountId` / `transferToAccountName` reflect the rule destination (omitted DB value resolves to the user’s default Wallet).
 
 #### Status codes
 
@@ -954,6 +958,7 @@ Creates or updates a rule (upsert on `user_id` + `counterpartyKey` + `transactio
 - `transactionType` (required): `income`, `expense`, or `transfer`
 - `categoryId` (required): category UUID; category `type` must match `transactionType`
 - `counterpartyLabel` (optional): display label stored on updated transactions
+- `transferToAccountId` (optional, transfer rules only): destination account UUID; omit or `null` for default Wallet. When set to a non-Wallet account, matching and new SMS transfers are paired Wallet → this account.
 
 #### Example request
 

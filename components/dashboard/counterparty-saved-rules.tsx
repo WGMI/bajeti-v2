@@ -34,6 +34,8 @@ type RuleRow = {
   transactionType: CategoryType;
   categoryId: string;
   categoryName: string;
+  transferToAccountId?: string | null;
+  transferToAccountName?: string | null;
 };
 
 type RuleSortColumn = "counterparty" | "scope" | "type" | "category";
@@ -56,7 +58,8 @@ export function CounterpartySavedRules({
   /** Notify parent so other panels (e.g. suggestions) can reload. */
   onRulesChanged?: () => void;
 }) {
-  const { categories, refetch } = useBudget();
+  const { categories, accounts, refetch, getDefaultAccount } = useBudget();
+  const defaultAccount = getDefaultAccount();
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +68,7 @@ export function CounterpartySavedRules({
   const [scopeEdits, setScopeEdits] = useState<Record<string, "all" | "account">>({});
   const [accountRefEdits, setAccountRefEdits] = useState<Record<string, string>>({});
   const [typeEdits, setTypeEdits] = useState<Record<string, CategoryType>>({});
+  const [transferToEdits, setTransferToEdits] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -159,13 +163,21 @@ export function CounterpartySavedRules({
       setTypeEdits(
         Object.fromEntries(list.map((r) => [r.id, r.transactionType])) as Record<string, CategoryType>
       );
+      setTransferToEdits(
+        Object.fromEntries(
+          list.map((r) => [
+            r.id,
+            r.transferToAccountId ?? defaultAccount?.id ?? "",
+          ])
+        ) as Record<string, string>
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load rules");
       setRules([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [defaultAccount?.id]);
 
   useEffect(() => {
     void load();
@@ -188,26 +200,43 @@ export function CounterpartySavedRules({
         ? makeScopedCounterpartyKey(keyBase, accountRefValue)
         : keyBase;
     const transactionType = typeEdits[rule.id] ?? rule.transactionType;
+    const walletId = defaultAccount?.id ?? "";
+    const transferToValue = transferToEdits[rule.id] ?? rule.transferToAccountId ?? walletId;
+    const transferToPayload =
+      transactionType === "transfer" && transferToValue !== walletId
+        ? transferToValue
+        : transactionType === "transfer"
+          ? null
+          : undefined;
+    const ruleTransferResolved = rule.transferToAccountId ?? walletId;
     const categoryChanged = categoryId !== rule.categoryId;
     const keyChanged = counterpartyKey !== rule.counterpartyKey;
     const typeChanged = transactionType !== rule.transactionType;
-    if (!categoryId || (!categoryChanged && !keyChanged && !typeChanged)) return;
+    const transferToChanged =
+      transactionType === "transfer" && transferToValue !== ruleTransferResolved;
+    if (!categoryId || (!categoryChanged && !keyChanged && !typeChanged && !transferToChanged)) {
+      return;
+    }
     setSavingId(rule.id);
     setError(null);
     try {
-      const usePatch = keyChanged || typeChanged;
+      const usePatch = keyChanged || typeChanged || transferToChanged;
+      const body: Record<string, string | null> = {
+        counterpartyKey,
+        counterpartyLabel: formatKeyLabel(counterpartyKey),
+        transactionType,
+        categoryId,
+      };
+      if (transactionType === "transfer") {
+        body.transferToAccountId = transferToPayload ?? null;
+      }
       const res = await fetch(
         usePatch ? `${API}/counterparty-rules/${rule.id}` : `${API}/counterparty-rules`,
         {
           method: usePatch ? "PATCH" : "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            counterpartyKey,
-            counterpartyLabel: formatKeyLabel(counterpartyKey),
-            transactionType,
-            categoryId,
-          }),
+          body: JSON.stringify(body),
         }
       );
       if (!res.ok) {
@@ -342,10 +371,15 @@ export function CounterpartySavedRules({
                 scopeValue === "account" && accountRefValue.trim().length >= 3
                   ? makeScopedCounterpartyKey(keyValue.trim(), accountRefValue.trim())
                   : keyValue.trim();
+              const walletId = defaultAccount?.id ?? "";
+              const transferToValue =
+                transferToEdits[rule.id] ?? rule.transferToAccountId ?? walletId;
+              const ruleTransferResolved = rule.transferToAccountId ?? walletId;
               const dirty =
                 catId !== rule.categoryId ||
                 composedKey !== rule.counterpartyKey ||
-                typeValue !== rule.transactionType;
+                typeValue !== rule.transactionType ||
+                (typeValue === "transfer" && transferToValue !== ruleTransferResolved);
               return (
                 <li
                   key={rule.id}
@@ -408,9 +442,16 @@ export function CounterpartySavedRules({
                       <Label className="text-xs text-muted-foreground">Type</Label>
                       <Select
                         value={typeValue}
-                        onValueChange={(value) =>
-                          setTypeEdits((prev) => ({ ...prev, [rule.id]: value as CategoryType }))
-                        }
+                        onValueChange={(value) => {
+                          const nextType = value as CategoryType;
+                          setTypeEdits((prev) => ({ ...prev, [rule.id]: nextType }));
+                          if (nextType === "transfer" && !transferToEdits[rule.id]) {
+                            setTransferToEdits((prev) => ({
+                              ...prev,
+                              [rule.id]: defaultAccount?.id ?? "",
+                            }));
+                          }
+                        }}
                       >
                         <SelectTrigger className="h-9 w-full">
                           <span className="truncate capitalize">{typeValue}</span>
@@ -444,6 +485,33 @@ export function CounterpartySavedRules({
                           </SelectContent>
                         </Select>
                       </div>
+                    {typeValue === "transfer" ? (
+                      <div className="space-y-1.5 min-w-0 w-full sm:w-[180px]">
+                        <Label className="text-xs text-muted-foreground">Transfer to</Label>
+                        <Select
+                          value={transferToValue || walletId}
+                          onValueChange={(id) =>
+                            setTransferToEdits((prev) => ({ ...prev, [rule.id]: id }))
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full">
+                            <span className="truncate">
+                              {accounts.find((a) => a.id === (transferToValue || walletId))
+                                ?.name ??
+                                rule.transferToAccountName ??
+                                "Wallet"}
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {accounts.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
                       <div className="flex flex-wrap gap-2 shrink-0">
                         <CounterpartyMessagesButton
                           counterpartyKey={keyValue.trim()}

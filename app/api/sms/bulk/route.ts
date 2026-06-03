@@ -222,11 +222,11 @@ export async function POST(request: Request) {
         }
         const { resolved: stored } = amountResolution;
 
-        const category = (await resolveCategoryForSmsIngestion(
+        const { category, transferToAccountId } = await resolveCategoryForSmsIngestion(
           userId,
           { ...parsed, type: transactionType },
           categoryRows
-        )) as { id: string; type: CategoryType } | undefined;
+        );
 
         if (!category) {
           results.push({
@@ -273,6 +273,7 @@ export async function POST(request: Request) {
           counterparty: parsed.counterparty,
           counterpartyKey: parsed.counterpartyKey,
           transferCategoryId,
+          transferToAccountId,
           transactionCharges: parsed.charges,
         });
 

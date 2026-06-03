@@ -3,6 +3,7 @@ import { ensureDefaultAccount } from "@/lib/accounts";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { parseChargesForStorage } from "@/lib/transaction-amount";
 import { groupTransferLegIfMatched } from "@/lib/transfer-grouping";
+import { insertSmsTransferWithDestination } from "@/lib/counterparty-transfer-accounts";
 import type { CategoryType } from "@/lib/budget-types";
 import type { CurrencyCode } from "@/lib/currency-codes";
 
@@ -24,8 +25,26 @@ export async function insertSmsTransaction(input: {
   counterparty: string | null;
   counterpartyKey: string | null;
   transferCategoryId?: string | null;
+  /** From counterparty rule; null uses default Wallet. */
+  transferToAccountId?: string | null;
   transactionCharges?: number | null;
 }): Promise<ReturnType<typeof rowToTransaction> | null> {
+  if (input.transactionType === "transfer") {
+    const paired = await insertSmsTransferWithDestination({
+      userId: input.userId,
+      amount: input.amount,
+      categoryId: input.categoryId,
+      date: input.date,
+      message: input.message,
+      smsIdempotencyKey: input.smsIdempotencyKey,
+      rawMessageHash: input.rawMessageHash,
+      counterparty: input.counterparty,
+      counterpartyKey: input.counterpartyKey,
+      transferToAccountId: input.transferToAccountId ?? null,
+    });
+    if (paired) return paired;
+  }
+
   const accountId = await ensureDefaultAccount(input.userId);
   const numCharges =
     input.transactionType === "transfer"

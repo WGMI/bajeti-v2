@@ -61,7 +61,7 @@ For non-SMS mobile endpoints (summary + settings), see `docs/MOBILE-API.md`.
 ## Behavior
 
 - The same parser as the web “Paste SMS” flow is used (`lib/sms-parser.ts`): M-PESA-style messages, KES amounts, “received” → income, “sent to” / “paid to” / etc. → expense.
-- Transaction charges (e.g. “Transaction cost Ksh 7”) are parsed into `parsed.charges` and saved on the row as `transactionCharges`, separate from the principal `amount`.
+- Transaction charges (e.g. “Transaction cost Ksh 7”, “Fee:KES.5.75” on LOOP send confirmations) are parsed into `parsed.charges` and saved on the row as `transactionCharges`, separate from the principal `amount`.
 - If the parsed type is `"income"` or `"expense"` and amount and date are present, a transaction is created using the user’s **first category** of that type (categories are created from defaults if the user has none).
 - Duplicate prevention is idempotent: a deterministic key (`user + parsed type + amount + date + tx reference`) is stored on the transaction row, and duplicate SMS submissions return the existing transaction instead of creating a new one.
 - Messages parsed as `"neither"` or “cancelled” or with zero amount do not create a transaction; the response still includes `parsed` for the client to show or log.

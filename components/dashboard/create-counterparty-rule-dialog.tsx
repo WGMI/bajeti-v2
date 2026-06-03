@@ -40,11 +40,13 @@ export function CreateCounterpartyRuleDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const { categories, refetch } = useBudget();
+  const { categories, accounts, refetch, getDefaultAccount } = useBudget();
+  const defaultAccount = getDefaultAccount();
   const [keyDraft, setKeyDraft] = useState("");
   const [scope, setScope] = useState<"all" | "account">("all");
   const [accountRefDraft, setAccountRefDraft] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [transferToAccountId, setTransferToAccountId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -61,8 +63,13 @@ export function CreateCounterpartyRuleDialog({
     setScope(detectedAccountRef ? "account" : "all");
     setAccountRefDraft(detectedAccountRef ?? "");
     setCategoryId(transaction.categoryId);
+    setTransferToAccountId(
+      transaction.type === "transfer"
+        ? (transaction.counterAccountId ?? defaultAccount?.id ?? "")
+        : ""
+    );
     setError(null);
-  }, [open, transaction]);
+  }, [open, transaction, defaultAccount?.id]);
 
   const txType = transaction?.type;
   const typeCats = txType ? categories.filter((c) => c.type === txType) : [];
@@ -92,16 +99,23 @@ export function CreateCounterpartyRuleDialog({
       const counterpartyLabel =
         trimmed.length > 0 ? trimmed : key.replace(/\b\w/g, (c) => c.toUpperCase());
       const ruleKey = scope === "account" ? makeScopedCounterpartyKey(key, accountRef) : key;
+      const payload: Record<string, string | null> = {
+        counterpartyKey: ruleKey,
+        counterpartyLabel,
+        transactionType: txType,
+        categoryId,
+      };
+      if (txType === "transfer") {
+        const walletId = defaultAccount?.id ?? null;
+        const destId = transferToAccountId || walletId;
+        payload.transferToAccountId =
+          destId && destId !== walletId ? destId : null;
+      }
       const res = await fetch(`${API}/counterparty-rules`, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          counterpartyKey: ruleKey,
-          counterpartyLabel,
-          transactionType: txType,
-          categoryId,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -196,6 +210,35 @@ export function CreateCounterpartyRuleDialog({
               </SelectContent>
             </Select>
           </div>
+          {txType === "transfer" ? (
+            <div className="space-y-2">
+              <Label htmlFor="rule-transfer-to">Transfer to account</Label>
+              <Select
+                value={transferToAccountId || defaultAccount?.id || ""}
+                onValueChange={setTransferToAccountId}
+              >
+                <SelectTrigger id="rule-transfer-to">
+                  <span className="truncate">
+                    {accounts.find(
+                      (a) => a.id === (transferToAccountId || defaultAccount?.id)
+                    )?.name ?? "Wallet"}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                      {a.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Wallet is used when not specified. Choose another account to pair SMS transfers
+                automatically.
+              </p>
+            </div>
+          ) : null}
           {error ? (
             <p className="text-sm text-destructive" role="alert">
               {error}

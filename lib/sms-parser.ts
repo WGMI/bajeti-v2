@@ -416,6 +416,30 @@ export function extractSmsCurrencyAmounts(
   return results;
 }
 
+const SMS_CHARGE_LABELS =
+  "Transaction cost|charges|Interest charged|Fee";
+const SMS_CHARGE_AMOUNT =
+  "(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)";
+
+/**
+ * Extract transaction fees from SMS (e.g. "Transaction cost Ksh 7",
+ * "Charges 25.51 KES", "Fee:KES.5.75" on LOOP send confirmations).
+ */
+export function extractSmsTransactionCharges(message: string): number {
+  const chargesRegex = new RegExp(
+    `(?:${SMS_CHARGE_LABELS})\\s*:?\\s*.*?(?:(${SMS_CURRENCY_REGEX_SOURCE}))[\\s.]*${SMS_CHARGE_AMOUNT}|${SMS_CHARGE_AMOUNT}\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
+    "i"
+  );
+  const chargesMatch = message.match(chargesRegex);
+  const tryChargeAmount = (raw: string | undefined) => {
+    const value = raw ? parseAmountToken(raw) : null;
+    return value != null && value > 0 ? value : null;
+  };
+  const chargesValue =
+    tryChargeAmount(chargesMatch?.[2]) ?? tryChargeAmount(chargesMatch?.[1]);
+  return chargesValue ?? 0;
+}
+
 /**
  * Web equivalent of the Android parseSMS helper.
  * Takes a raw SMS body and returns a normalized parse result.
@@ -483,7 +507,7 @@ export function parseSMS(
       "Bill payment to",
       "Fuliza M-PESA amount is",
     ],
-    transaction: ["Transaction cost", "charges", "Interest charged"],
+    transaction: ["Transaction cost", "charges", "Interest charged", "Fee"],
   };
   for (const [ruleType, keywords] of Object.entries(smsRules)) {
     const matched = keywords.filter((kw) => lowerMessage.includes(kw.toLowerCase()));
@@ -508,17 +532,7 @@ export function parseSMS(
     currency = currencyAmounts[0].currency;
   }
 
-  // Extract transaction charges (e.g. "Transaction cost Ksh..." or "Charges 25.51 KES")
-  const chargesRegex = new RegExp(
-    `(Transaction cost|charges|Interest charged).*?(?:(${SMS_CURRENCY_REGEX_SOURCE}))\\s*(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)|(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
-    "i"
-  );
-  const chargesMatch = message.match(chargesRegex);
-  const chargesRaw = chargesMatch?.[3] ?? chargesMatch?.[4] ?? "";
-  const chargesValue = chargesRaw ? parseAmountToken(chargesRaw) : null;
-  if (chargesValue != null) {
-    charges = chargesValue;
-  }
+  charges = extractSmsTransactionCharges(message);
 
   transactionRef = extractTransactionRef(message);
 

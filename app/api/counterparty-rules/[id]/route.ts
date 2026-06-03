@@ -8,6 +8,11 @@ import {
   splitScopedCounterpartyKey,
 } from "@/lib/sms-parser";
 import type { CategoryType } from "@/lib/budget-types";
+import {
+  applyTransferDestinationToTransactionIds,
+  parseTransferToAccountIdFromBody,
+  validateTransferToAccountId,
+} from "@/lib/counterparty-transfer-accounts";
 
 type TxRow = {
   id: string;
@@ -55,7 +60,12 @@ export async function PATCH(
     const body = await request.json();
     const counterpartyKeyRaw = body.counterpartyKey;
     const categoryId = body.categoryId;
-    const transactionType = body.transactionType;
+    const transactionType = body.transactionType as CategoryType;
+    const transferToAccountIdParsed = parseTransferToAccountIdFromBody(
+      body as Record<string, unknown>,
+      transactionType,
+      { missingFieldMeans: "unchanged" }
+    );
     const counterpartyLabel =
       typeof body.counterpartyLabel === "string" ? body.counterpartyLabel.trim() : "";
 
@@ -81,12 +91,15 @@ export async function PATCH(
       : baseKey;
 
     const existingRows = await sql`
-      SELECT id
+      SELECT id, transfer_to_account_id
       FROM counterparty_category_rules
       WHERE id = ${id} AND user_id = ${userId}
       LIMIT 1
     `;
-    if (!existingRows[0]) {
+    const existing = existingRows[0] as
+      | { id: string; transfer_to_account_id: string | null }
+      | undefined;
+    if (!existing) {
       return NextResponse.json({ error: "Rule not found" }, { status: 404 });
     }
 
@@ -104,12 +117,30 @@ export async function PATCH(
       );
     }
 
+    let transferToAccountId: string | null = existing.transfer_to_account_id;
+    if (transactionType !== "transfer") {
+      transferToAccountId = null;
+    } else if (transferToAccountIdParsed !== undefined) {
+      try {
+        transferToAccountId = await validateTransferToAccountId(
+          userId,
+          transferToAccountIdParsed
+        );
+      } catch {
+        return NextResponse.json(
+          { error: "Transfer destination account not found" },
+          { status: 400 }
+        );
+      }
+    }
+
     await sql`
       UPDATE counterparty_category_rules
       SET
         counterparty_key = ${counterpartyKey},
         transaction_type = ${transactionType}::category_type,
-        category_id = ${categoryId}
+        category_id = ${categoryId},
+        transfer_to_account_id = ${transferToAccountId}
       WHERE id = ${id} AND user_id = ${userId}
     `;
 
@@ -147,6 +178,14 @@ export async function PATCH(
             SELECT (jsonb_array_elements_text(${JSON.stringify(matchingIds)}::jsonb))::uuid
           )
       `;
+      if (transactionType === "transfer") {
+        await applyTransferDestinationToTransactionIds({
+          userId,
+          transactionIds: matchingIds,
+          transferToAccountId,
+          categoryId,
+        });
+      }
     }
 
     return NextResponse.json({ updatedCount: matchingIds.length });

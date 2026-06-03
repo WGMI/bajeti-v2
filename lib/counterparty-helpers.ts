@@ -5,23 +5,31 @@ export { effectiveCounterpartyFromTransaction } from "./effective-counterparty-f
 
 type CategoryRow = { id: string; name: string; type: string };
 
+export type SmsCounterpartyRuleResolution = {
+  category: CategoryRow | undefined;
+  /** Null on rule means default Wallet when type is transfer. */
+  transferToAccountId: string | null;
+};
+
 export async function resolveCategoryForSmsIngestion(
   userId: string,
   parsed: { type: string; counterpartyKey: string | null; message?: string },
   categoryRows: CategoryRow[]
-): Promise<CategoryRow | undefined> {
+): Promise<SmsCounterpartyRuleResolution> {
   const categoriesForType = categoryRows.filter((c) => c.type === parsed.type);
   const otherCategory = categoriesForType.find((c) =>
     c.name.toLowerCase().includes("other")
   );
   const fallback = otherCategory ?? categoriesForType[0];
   if (!parsed.counterpartyKey || parsed.type === "neither") {
-    return fallback;
+    return { category: fallback, transferToAccountId: null };
   }
   const candidateKeys = candidateCounterpartyRuleKeys(parsed.counterpartyKey, parsed.message ?? "");
-  if (candidateKeys.length === 0) return fallback;
+  if (candidateKeys.length === 0) {
+    return { category: fallback, transferToAccountId: null };
+  }
   const ruleRows = await sql`
-    SELECT r.category_id
+    SELECT r.category_id, r.transfer_to_account_id
     FROM counterparty_category_rules r
     INNER JOIN categories c ON c.id = r.category_id AND c.user_id = ${userId}
     WHERE r.user_id = ${userId}
@@ -35,7 +43,14 @@ export async function resolveCategoryForSmsIngestion(
     END
     LIMIT 1
   `;
-  const categoryId = (ruleRows[0] as { category_id: string } | undefined)?.category_id;
-  if (!categoryId) return fallback;
-  return categoryRows.find((c) => c.id === categoryId) ?? fallback;
+  const rule = ruleRows[0] as
+    | { category_id: string; transfer_to_account_id: string | null }
+    | undefined;
+  if (!rule?.category_id) {
+    return { category: fallback, transferToAccountId: null };
+  }
+  const category = categoryRows.find((c) => c.id === rule.category_id) ?? fallback;
+  const transferToAccountId =
+    parsed.type === "transfer" ? rule.transfer_to_account_id : null;
+  return { category, transferToAccountId };
 }
