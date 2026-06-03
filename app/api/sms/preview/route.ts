@@ -7,12 +7,19 @@ import { getSmsTransactionDateSource } from "@/lib/user-sms-settings";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
+import { resolveSmsTransactionAmount } from "@/lib/resolve-sms-transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string };
 
 type PreviewTransaction = {
   amount: number;
+  currency: string;
+  originalAmount: number | null;
+  originalCurrency: string | null;
+  fxRate: number | null;
+  fxRateDate: string | null;
+  fxSource: string | null;
   categoryId: string | null;
   date: string;
   notes: string;
@@ -82,7 +89,7 @@ export async function POST(request: Request) {
     let skipReason: string | null = null;
     if (effectiveType === "neither") {
       skipReason = "Message did not match an income, expense, or transfer transaction";
-    } else if (parsed.amount <= 0) {
+    } else if (parsed.amount <= 0 || !parsed.currency) {
       skipReason = "Parsed transaction amount is missing or invalid";
     } else if (!parsed.date) {
       skipReason = "Parsed transaction date is missing or invalid";
@@ -97,6 +104,18 @@ export async function POST(request: Request) {
         smsIdempotencyKey: null,
       });
     }
+
+    const amountResolution = await resolveSmsTransactionAmount(userId, parsed);
+    if (!amountResolution.ok) {
+      return NextResponse.json({
+        status: "ignored",
+        reason: amountResolution.reason,
+        parsed: parsedForApi,
+        preview: null,
+        smsIdempotencyKey: null,
+      });
+    }
+    const { resolved: stored } = amountResolution;
 
     let categoryRows = await sql`
       SELECT id, name, type
@@ -141,13 +160,20 @@ export async function POST(request: Request) {
 
     const smsIdempotencyKey = buildSmsIdempotencyKey({
       type: transactionType,
-      amount: parsed.amount,
+      amount: stored.idempotencyAmount,
+      currency: stored.idempotencyCurrency,
       date: parsed.date,
       transactionRef: parsed.transactionRef,
     });
 
     const preview: PreviewTransaction = {
-      amount: parsed.amount,
+      amount: stored.storedAmount,
+      currency: stored.currency,
+      originalAmount: stored.originalAmount,
+      originalCurrency: stored.originalCurrency,
+      fxRate: stored.fxRate,
+      fxRateDate: stored.fxRateDate,
+      fxSource: stored.fxSource,
       categoryId: category?.id ?? null,
       date: parsed.date,
       notes: parsed.message,

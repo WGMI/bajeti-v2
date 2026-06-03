@@ -8,7 +8,7 @@ import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
-import { parseAmountForStorage } from "@/lib/transaction-amount";
+import { resolveSmsTransactionAmount } from "@/lib/resolve-sms-transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     let skipReason: string | null = null;
     if (effectiveType === "neither") {
       skipReason = "Message did not match an income, expense, or transfer transaction";
-    } else if (parsed.amount <= 0) {
+    } else if (parsed.amount <= 0 || !parsed.currency) {
       skipReason = "Parsed transaction amount is missing or invalid";
     } else if (!parsed.date) {
       skipReason = "Parsed transaction date is missing or invalid";
@@ -102,15 +102,16 @@ export async function POST(request: Request) {
       });
     }
     const transactionType = effectiveType as CategoryType;
-    const storedAmount = parseAmountForStorage(parsed.amount);
-    if (storedAmount == null) {
+    const amountResolution = await resolveSmsTransactionAmount(userId, parsed);
+    if (!amountResolution.ok) {
       return NextResponse.json({
         status: "ignored",
         transactionCreated: false,
-        reason: "Parsed transaction amount is missing or invalid",
+        reason: amountResolution.reason,
         parsed: smsParseResultForApi(parsed),
       });
     }
+    const { resolved: stored } = amountResolution;
 
     // Ensure user has categories, then get first category of the parsed type
     let categoryRows = await sql`
@@ -157,7 +158,8 @@ export async function POST(request: Request) {
     const smsIdempotencyKey = sha256(
       buildSmsIdempotencyKey({
         type: transactionType,
-        amount: parsed.amount,
+        amount: stored.idempotencyAmount,
+        currency: stored.idempotencyCurrency,
         date: parsed.date,
         transactionRef: parsed.transactionRef,
       })
@@ -167,6 +169,9 @@ export async function POST(request: Request) {
       parsedType: parsed.type,
       effectiveType: transactionType,
       parsedAmount: parsed.amount,
+      parsedCurrency: parsed.currency,
+      storedAmount: stored.storedAmount,
+      storedCurrency: stored.currency,
       parsedDate: parsed.date,
       transactionRef: parsed.transactionRef,
       smsIdempotencyKey,
@@ -174,7 +179,9 @@ export async function POST(request: Request) {
     });
     const existingRows = await sql`
       SELECT
-        t.id, t.amount, t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+        t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+        t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+        t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
         t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
         c.name AS category_name,
@@ -203,7 +210,13 @@ export async function POST(request: Request) {
 
     const created = await insertSmsTransaction({
       userId,
-      amount: storedAmount,
+      amount: stored.storedAmount,
+      currency: stored.currency,
+      originalAmount: stored.originalAmount,
+      originalCurrency: stored.originalCurrency,
+      fxRate: stored.fxRate,
+      fxRateDate: stored.fxRateDate,
+      fxSource: stored.fxSource,
       categoryId: category.id,
       date: parsed.date,
       message: parsed.message,
@@ -218,7 +231,9 @@ export async function POST(request: Request) {
     if (!created) {
       const existingAfterConflict = await sql`
         SELECT
-          t.id, t.amount, t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+          t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+          t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+          t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
           t.sms_counterparty, t.sms_counterparty_key,
           t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
           c.name AS category_name,

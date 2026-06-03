@@ -3,10 +3,17 @@ import { ensureDefaultAccount } from "@/lib/accounts";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { groupTransferLegIfMatched } from "@/lib/transfer-grouping";
 import type { CategoryType } from "@/lib/budget-types";
+import type { CurrencyCode } from "@/lib/currency-codes";
 
 export async function insertSmsTransaction(input: {
   userId: string;
   amount: number;
+  currency?: CurrencyCode | null;
+  originalAmount?: number | null;
+  originalCurrency?: CurrencyCode | null;
+  fxRate?: number | null;
+  fxRateDate?: string | null;
+  fxSource?: string | null;
   categoryId: string;
   date: string;
   message: string;
@@ -23,6 +30,12 @@ export async function insertSmsTransaction(input: {
     INSERT INTO transactions (
       user_id,
       amount,
+      currency,
+      original_amount,
+      original_currency,
+      fx_rate,
+      fx_rate_date,
+      fx_source,
       category_id,
       account_id,
       date,
@@ -36,6 +49,12 @@ export async function insertSmsTransaction(input: {
     VALUES (
       ${input.userId},
       ${input.amount},
+      ${input.currency ?? null},
+      ${input.originalAmount ?? null},
+      ${input.originalCurrency ?? null},
+      ${input.fxRate ?? null},
+      ${input.fxRateDate ?? null},
+      ${input.fxSource ?? null},
       ${input.categoryId},
       ${accountId},
       ${input.date},
@@ -50,6 +69,12 @@ export async function insertSmsTransaction(input: {
     RETURNING
       id,
       amount,
+      currency,
+      original_amount,
+      original_currency,
+      fx_rate,
+      fx_rate_date::text AS fx_rate_date,
+      fx_source,
       account_id,
       category_id,
       date::text AS date,
@@ -81,7 +106,9 @@ export async function insertSmsTransaction(input: {
 
   const enriched = await sql`
     SELECT
-      t.id, t.amount, t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+      t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+      t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+      t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
       c.name AS category_name,

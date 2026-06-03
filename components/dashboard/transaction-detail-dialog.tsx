@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pencil, Trash2, Loader2, Tags } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
-import { formatCurrencyWithSign } from "@/lib/format-currency";
+import { formatCurrencyWithSign, formatCurrency } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { Transaction } from "@/lib/budget-types";
 import { cn } from "@/lib/utils";
@@ -123,9 +123,21 @@ export function TransactionDetailDialog({
                 isIncome ? "text-success" : isTransfer ? "text-blue-700" : "text-foreground"
               )}
             >
-              {formatCurrencyWithSign(transaction.amount, currency, transaction.type)}
+              {formatCurrencyWithSign(
+                transaction.amount,
+                transaction.currency ?? currency,
+                transaction.type
+              )}
             </span>
           </div>
+          {transaction.originalCurrency &&
+          transaction.originalAmount != null &&
+          transaction.fxRate != null ? (
+            <p className="text-xs text-muted-foreground text-right -mt-2">
+              {formatCurrency(transaction.originalAmount, transaction.originalCurrency)} at{" "}
+              {transaction.fxRate.toFixed(4)} ({transaction.fxSource ?? "fx"})
+            </p>
+          ) : null}
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-muted-foreground">Category</span>
             <span className="font-medium">{category?.name ?? "Unknown"}</span>

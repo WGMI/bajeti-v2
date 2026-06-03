@@ -24,6 +24,13 @@ export interface Category {
 export interface Transaction {
   id: string;
   amount: number;
+  /** Storage currency (user home currency when converted from SMS). */
+  currency?: string | null;
+  originalAmount?: number | null;
+  originalCurrency?: string | null;
+  fxRate?: number | null;
+  fxRateDate?: string | null;
+  fxSource?: string | null;
   accountId: string;
   /** Present on API responses when loaded with an account join. */
   accountName?: string;

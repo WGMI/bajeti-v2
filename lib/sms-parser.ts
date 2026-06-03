@@ -1,3 +1,9 @@
+import {
+  normalizeCurrencyCode,
+  SMS_CURRENCY_REGEX_SOURCE,
+  type CurrencyCode,
+} from "@/lib/currency-codes";
+
 export type SmsType = "income" | "expense" | "transfer" | "neither";
 
 /** Where the transaction `date` should come from when both SMS text and device time exist. */
@@ -7,6 +13,8 @@ export interface SmsParseResult {
   message: string;
   type: SmsType;
   amount: number;
+  /** ISO currency code parsed from the SMS amount (e.g. USD, KES). */
+  currency: CurrencyCode | null;
   date: string;
   fee: number;
   transactionRef: string | null;
@@ -381,6 +389,34 @@ export function extractTransferReferenceTokens(messageRaw: string): string[] {
   return [...tokens];
 }
 
+const SMS_AMOUNT_REGEX = new RegExp(
+  `(?:(${SMS_CURRENCY_REGEX_SOURCE}))\\s*(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)|(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
+  "gi"
+);
+
+function parseAmountToken(raw: string): number | null {
+  const normalized = raw.replace(/[\s,]/g, "");
+  const value = parseFloat(normalized);
+  return Number.isNaN(value) ? null : value;
+}
+
+/** Extract currency-tagged amounts in message order. */
+export function extractSmsCurrencyAmounts(
+  message: string
+): Array<{ amount: number; currency: CurrencyCode }> {
+  const results: Array<{ amount: number; currency: CurrencyCode }> = [];
+  for (const match of message.matchAll(SMS_AMOUNT_REGEX)) {
+    const codeRaw = match[1] ?? match[4] ?? "";
+    const amountRaw = match[2] ?? match[3] ?? "";
+    const currency = normalizeCurrencyCode(codeRaw);
+    const amount = parseAmountToken(amountRaw);
+    if (currency && amount != null) {
+      results.push({ amount, currency });
+    }
+  }
+  return results;
+}
+
 /**
  * Web equivalent of the Android parseSMS helper.
  * Takes a raw SMS body and returns a normalized parse result.
@@ -397,6 +433,7 @@ export function parseSMS(
 
   let type: SmsType = "neither";
   let amount = 0;
+  let currency: CurrencyCode | null = null;
   let fee = 0;
   let date = "";
   let transactionRef: string | null = null;
@@ -422,6 +459,7 @@ export function parseSMS(
       message,
       type: "neither",
       amount: 0,
+      currency: null,
       date: "",
       fee: 0,
       transactionRef: null,
@@ -465,36 +503,23 @@ export function parseSMS(
   }
   console.log("[SMS parse] resolved type:", type);
 
-  // Extract amount - first currency amount in message is usually transaction amount.
-  // Support both "KES 2000" and "2000 KES" formats.
-  const amountRegex =
-    /(?:KES|Ksh|Kshs\.?)\s*(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)|(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)\s*(?:KES|Ksh|Kshs\.?)/gi;
-  const allMatches: number[] = [];
-
-  for (const match of message.matchAll(amountRegex)) {
-    const raw = match[1] ?? match[2] ?? "";
-    const normalized = raw.replace(/[\s,]/g, "");
-    const value = parseFloat(normalized);
-    if (!Number.isNaN(value)) {
-      allMatches.push(value);
-    }
-  }
-
-  if (allMatches.length > 0) {
-    amount = allMatches[0];
+  // First currency amount in message is usually the transaction amount.
+  const currencyAmounts = extractSmsCurrencyAmounts(message);
+  if (currencyAmounts.length > 0) {
+    amount = currencyAmounts[0].amount;
+    currency = currencyAmounts[0].currency;
   }
 
   // Extract fee (look for phrases like "Transaction cost Ksh..." or "Charges 25.51 KES")
-  const feeRegex =
-    /(Transaction cost|charges|Interest charged).*?(?:(?:KES|Ksh|Kshs\.?)\s*(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)|(\d[\d\s,]*\.\d{1,2}|\d[\d\s,]*)\s*(?:KES|Ksh|Kshs\.?))/i;
+  const feeRegex = new RegExp(
+    `(Transaction cost|charges|Interest charged).*?(?:(${SMS_CURRENCY_REGEX_SOURCE}))\\s*(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)|(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
+    "i"
+  );
   const feeMatch = message.match(feeRegex);
-  const feeRaw = feeMatch?.[2] ?? feeMatch?.[3] ?? "";
-  if (feeRaw) {
-    const normalized = feeRaw.replace(/[\s,]/g, "");
-    const value = parseFloat(normalized);
-    if (!Number.isNaN(value)) {
-      fee = value;
-    }
+  const feeRaw = feeMatch?.[3] ?? feeMatch?.[4] ?? "";
+  const feeValue = feeRaw ? parseAmountToken(feeRaw) : null;
+  if (feeValue != null) {
+    fee = feeValue;
   }
 
   // Add fee to amount if needed
@@ -527,6 +552,7 @@ export function parseSMS(
     message,
     type,
     amount,
+    currency,
     date,
     fee,
     transactionRef,
@@ -537,6 +563,7 @@ export function parseSMS(
   console.log("[SMS parse] result:", {
     type: result.type,
     amount: result.amount,
+    currency: result.currency,
     date: result.date,
     fee: result.fee,
     transactionRef: result.transactionRef,
@@ -556,6 +583,7 @@ export function smsParseResultForApi(p: SmsParseResult) {
     message: p.message,
     type: p.type,
     amount: p.amount,
+    currency: p.currency,
     date: p.date,
     fee: p.fee,
     transactionRef: p.transactionRef,

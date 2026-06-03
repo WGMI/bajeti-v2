@@ -20,10 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType, Transaction } from "@/lib/budget-types";
-import { parseSMS } from "@/lib/sms-parser";
 import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
-import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
-import { useSettings } from "@/lib/settings-store";
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -102,7 +99,6 @@ function TransactionFormFields({
     refetch,
   } = useBudget();
   const defaultAccount = getDefaultAccount();
-  const { smsTransactionDateSource } = useSettings();
   const isEdit = !!editingTransaction;
   const typeLock = initialType ?? editingTransaction?.type ?? null;
 
@@ -177,37 +173,63 @@ function TransactionFormFields({
     if (!trimmed) return;
     setSmsParseFeedback(null);
     console.log("[SMS dialog] typeLock (user's choice):", typeLock);
-    const result = parseSMS(trimmed, {
-      transactionDateSource: smsTransactionDateSource,
-    });
+
+    let previewData: {
+      status: string;
+      reason?: string | null;
+      parsed?: {
+        message: string;
+        type: CategoryType | "neither";
+        amount: number;
+        currency: string | null;
+        date: string;
+        transactionRef: string | null;
+        counterparty: string | null;
+        counterpartyKey: string | null;
+      };
+      preview?: {
+        amount: number;
+        date: string;
+        type: CategoryType;
+      } | null;
+      smsIdempotencyKey?: string | null;
+    };
+
+    try {
+      const res = await fetch("/api/sms/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ message: trimmed }),
+      });
+      if (!res.ok) {
+        setSmsParseFeedback("Could not parse this SMS. Please try again.");
+        return;
+      }
+      previewData = await res.json();
+    } catch (e) {
+      console.warn("[SMS dialog] preview request failed", e);
+      setSmsParseFeedback("Could not parse this SMS. Please try again.");
+      return;
+    }
+
+    const result = previewData.parsed;
+    const preview = previewData.preview;
+    if (previewData.status === "ignored" || !result || !preview) {
+      setSmsParseFeedback(
+        previewData.reason ??
+          "This SMS did not look like an income, expense, or transfer transaction."
+      );
+      setSmsIdempotencyKey(null);
+      return;
+    }
+
     console.log("[SMS dialog] parsed result.type:", result.type);
 
-    if (result.type === "neither") {
-      setSmsParseFeedback("This SMS did not look like an income, expense, or transfer transaction.");
-      return;
-    }
-    if (result.amount <= 0) {
-      setSmsParseFeedback("The SMS was recognized, but the amount is missing or invalid.");
-      setSmsIdempotencyKey(null);
-      return;
-    }
-    if (!result.date) {
-      setSmsParseFeedback("The SMS was recognized, but the date is missing or invalid.");
-      setSmsIdempotencyKey(null);
-      return;
-    }
-
     setNotes(result.message);
-    if (result.amount > 0) setAmount(String(result.amount));
-    if (result.date) setDate(result.date);
-    setSmsIdempotencyKey(
-      buildSmsIdempotencyKey({
-        type: result.type,
-        amount: result.amount,
-        date: result.date,
-        transactionRef: result.transactionRef,
-      })
-    );
+    setAmount(String(preview.amount));
+    setDate(preview.date);
+    setSmsIdempotencyKey(previewData.smsIdempotencyKey ?? null);
     // Set category from SMS type, but prefer an explicit counterparty rule match when present.
     if (result.type === "income" || result.type === "expense" || result.type === "transfer") {
       let matchedCategoryId: string | null = null;

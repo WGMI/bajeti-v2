@@ -8,7 +8,7 @@ import { resolveCategoryForSmsIngestion } from "@/lib/counterparty-helpers";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
-import { parseAmountForStorage } from "@/lib/transaction-amount";
+import { resolveSmsTransactionAmount } from "@/lib/resolve-sms-transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
@@ -26,6 +26,7 @@ type BulkItemParsed = {
   message: string;
   type: "income" | "expense" | "transfer" | "neither";
   amount: number;
+  currency: string | null;
   date: string;
   fee: number;
   transactionRef: string | null;
@@ -195,7 +196,7 @@ export async function POST(request: Request) {
         let skipReason: string | null = null;
         if (effectiveType === "neither") {
           skipReason = "Message did not match an income, expense, or transfer transaction";
-        } else if (parsed.amount <= 0) {
+        } else if (parsed.amount <= 0 || !parsed.currency) {
           skipReason = "Parsed transaction amount is missing or invalid";
         } else if (!parsed.date) {
           skipReason = "Parsed transaction date is missing or invalid";
@@ -212,17 +213,18 @@ export async function POST(request: Request) {
           continue;
         }
         const transactionType = effectiveType as CategoryType;
-        const storedAmount = parseAmountForStorage(parsed.amount);
-        if (storedAmount == null) {
+        const amountResolution = await resolveSmsTransactionAmount(userId, parsed);
+        if (!amountResolution.ok) {
           results.push({
             index: i,
             status: "ignored",
             transactionCreated: false,
-            reason: "Parsed transaction amount is missing or invalid",
+            reason: amountResolution.reason,
             parsed: parsedForResponse,
           });
           continue;
         }
+        const { resolved: stored } = amountResolution;
 
         const category = (await resolveCategoryForSmsIngestion(
           userId,
@@ -245,7 +247,8 @@ export async function POST(request: Request) {
         const smsIdempotencyKey = sha256(
           buildSmsIdempotencyKey({
             type: transactionType,
-            amount: parsed.amount,
+            amount: stored.idempotencyAmount,
+            currency: stored.idempotencyCurrency,
             date: parsed.date,
             transactionRef: parsed.transactionRef,
           })
@@ -258,7 +261,13 @@ export async function POST(request: Request) {
 
         const created = await insertSmsTransaction({
           userId,
-          amount: storedAmount,
+          amount: stored.storedAmount,
+          currency: stored.currency,
+          originalAmount: stored.originalAmount,
+          originalCurrency: stored.originalCurrency,
+          fxRate: stored.fxRate,
+          fxRateDate: stored.fxRateDate,
+          fxSource: stored.fxSource,
           categoryId: category.id,
           date: parsed.date,
           message: parsed.message,

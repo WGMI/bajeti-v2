@@ -5,6 +5,12 @@ import type { CategoryType, TransferLeg } from "@/lib/budget-types";
 export type TransactionRow = {
   id: string;
   amount: string;
+  currency?: string | null;
+  original_amount?: string | null;
+  original_currency?: string | null;
+  fx_rate?: string | null;
+  fx_rate_date?: string | null;
+  fx_source?: string | null;
   account_id: string;
   account_name?: string | null;
   category_id: string;
@@ -57,9 +63,23 @@ export function rowToTransaction(row: TransactionRow) {
     row.transfer_leg === "out" || row.transfer_leg === "in"
       ? (row.transfer_leg as TransferLeg)
       : null;
+  const originalAmount =
+    row.original_amount != null && row.original_amount !== ""
+      ? normalizeStoredAmount(Number(row.original_amount))
+      : null;
+  const fxRate =
+    row.fx_rate != null && row.fx_rate !== ""
+      ? Number(row.fx_rate)
+      : null;
   return {
     id: row.id,
     amount: normalizeStoredAmount(Number(row.amount)),
+    currency: row.currency ?? null,
+    originalAmount,
+    originalCurrency: row.original_currency ?? null,
+    fxRate: fxRate != null && Number.isFinite(fxRate) ? fxRate : null,
+    fxRateDate: row.fx_rate_date ?? null,
+    fxSource: row.fx_source ?? null,
     accountId: row.account_id,
     accountName: accountNameFromRow(row),
     categoryId: row.category_id,
