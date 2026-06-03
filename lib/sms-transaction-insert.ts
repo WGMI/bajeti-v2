@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { ensureDefaultAccount } from "@/lib/accounts";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { parseChargesForStorage } from "@/lib/transaction-amount";
 import { groupTransferLegIfMatched } from "@/lib/transfer-grouping";
 import type { CategoryType } from "@/lib/budget-types";
 import type { CurrencyCode } from "@/lib/currency-codes";
@@ -23,13 +24,19 @@ export async function insertSmsTransaction(input: {
   counterparty: string | null;
   counterpartyKey: string | null;
   transferCategoryId?: string | null;
+  transactionCharges?: number | null;
 }): Promise<ReturnType<typeof rowToTransaction> | null> {
   const accountId = await ensureDefaultAccount(input.userId);
+  const numCharges =
+    input.transactionType === "transfer"
+      ? 0
+      : (parseChargesForStorage(input.transactionCharges) ?? 0);
 
   const rows = await sql`
     INSERT INTO transactions (
       user_id,
       amount,
+      transaction_charges,
       currency,
       original_amount,
       original_currency,
@@ -49,6 +56,7 @@ export async function insertSmsTransaction(input: {
     VALUES (
       ${input.userId},
       ${input.amount},
+      ${numCharges},
       ${input.currency ?? null},
       ${input.originalAmount ?? null},
       ${input.originalCurrency ?? null},
@@ -69,6 +77,7 @@ export async function insertSmsTransaction(input: {
     RETURNING
       id,
       amount,
+      transaction_charges,
       currency,
       original_amount,
       original_currency,
@@ -106,7 +115,7 @@ export async function insertSmsTransaction(input: {
 
   const enriched = await sql`
     SELECT
-      t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
       t.sms_counterparty, t.sms_counterparty_key,

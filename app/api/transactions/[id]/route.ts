@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
-import { parseAmountForStorage } from "@/lib/transaction-amount";
+import { parseAmountForStorage, parseChargesForStorage } from "@/lib/transaction-amount";
 import { resolveAccountId } from "@/lib/accounts";
 import {
   deleteTransferGroup,
@@ -13,7 +13,7 @@ import {
 async function fetchTransactionById(userId: string, id: string): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
@@ -46,7 +46,17 @@ export async function PATCH(
   const { id } = await params;
   try {
     const body = await request.json();
-    const { amount, categoryId, date, notes, type, accountId, fromAccountId, toAccountId } = body;
+    const {
+      amount,
+      categoryId,
+      date,
+      notes,
+      type,
+      accountId,
+      fromAccountId,
+      toAccountId,
+      transactionCharges,
+    } = body;
     if (
       amount == null ||
       !categoryId ||
@@ -99,12 +109,18 @@ export async function PATCH(
     if (numAmount == null) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
+    const numCharges =
+      type === "transfer" ? 0 : parseChargesForStorage(transactionCharges);
+    if (numCharges == null) {
+      return NextResponse.json({ error: "Invalid transaction charges" }, { status: 400 });
+    }
     const resolvedAccountId = await resolveAccountId(userId, accountId ?? existing.account_id);
 
     await sql`
       UPDATE transactions
       SET
         amount = ${numAmount},
+        transaction_charges = ${numCharges},
         category_id = ${categoryId},
         account_id = ${resolvedAccountId},
         date = ${date},

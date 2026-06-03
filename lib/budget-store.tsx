@@ -37,6 +37,7 @@ interface BudgetActions {
     fromAccountId?: string;
     toAccountId?: string;
     idempotencyKey?: string;
+    transactionCharges?: number;
   }) => Promise<Transaction>;
   updateTransaction: (
     id: string,

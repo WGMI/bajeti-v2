@@ -24,6 +24,8 @@ export interface Category {
 export interface Transaction {
   id: string;
   amount: number;
+  /** Fees/charges stored separately from principal amount (e.g. M-PESA transaction cost). */
+  transactionCharges?: number;
   /** Storage currency (user home currency when converted from SMS). */
   currency?: string | null;
   originalAmount?: number | null;

@@ -16,7 +16,7 @@ export interface SmsParseResult {
   /** ISO currency code parsed from the SMS amount (e.g. USD, KES). */
   currency: CurrencyCode | null;
   date: string;
-  fee: number;
+  charges: number;
   transactionRef: string | null;
   /** Human-readable payee / payer from the SMS (e.g. merchant name). */
   counterparty: string | null;
@@ -28,7 +28,6 @@ export interface SmsParseResult {
 
 export interface ParseSmsOptions {
   timestamp?: number | null;
-  includeFeeInExpense?: boolean;
   /**
    * `message` — prefer a calendar date parsed from the SMS body (M-PESA-style), then device time.
    * `received_at` — prefer `timestamp` when provided (e.g. mobile), then body.
@@ -427,14 +426,13 @@ export function parseSMS(
 ): SmsParseResult {
   const {
     timestamp = null,
-    includeFeeInExpense = false,
     transactionDateSource = "received_at",
   } = options;
 
   let type: SmsType = "neither";
   let amount = 0;
   let currency: CurrencyCode | null = null;
-  let fee = 0;
+  let charges = 0;
   let date = "";
   let transactionRef: string | null = null;
 
@@ -461,7 +459,7 @@ export function parseSMS(
       amount: 0,
       currency: null,
       date: "",
-      fee: 0,
+      charges: 0,
       transactionRef: null,
       counterparty: null,
       counterpartyKey: null,
@@ -510,21 +508,16 @@ export function parseSMS(
     currency = currencyAmounts[0].currency;
   }
 
-  // Extract fee (look for phrases like "Transaction cost Ksh..." or "Charges 25.51 KES")
-  const feeRegex = new RegExp(
+  // Extract transaction charges (e.g. "Transaction cost Ksh..." or "Charges 25.51 KES")
+  const chargesRegex = new RegExp(
     `(Transaction cost|charges|Interest charged).*?(?:(${SMS_CURRENCY_REGEX_SOURCE}))\\s*(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)|(\\d[\\d\\s,]*\\.\\d{1,2}|\\d[\\d\\s,]*)\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
     "i"
   );
-  const feeMatch = message.match(feeRegex);
-  const feeRaw = feeMatch?.[3] ?? feeMatch?.[4] ?? "";
-  const feeValue = feeRaw ? parseAmountToken(feeRaw) : null;
-  if (feeValue != null) {
-    fee = feeValue;
-  }
-
-  // Add fee to amount if needed
-  if (includeFeeInExpense && type === "expense") {
-    amount += fee;
+  const chargesMatch = message.match(chargesRegex);
+  const chargesRaw = chargesMatch?.[3] ?? chargesMatch?.[4] ?? "";
+  const chargesValue = chargesRaw ? parseAmountToken(chargesRaw) : null;
+  if (chargesValue != null) {
+    charges = chargesValue;
   }
 
   transactionRef = extractTransactionRef(message);
@@ -554,7 +547,7 @@ export function parseSMS(
     amount,
     currency,
     date,
-    fee,
+    charges,
     transactionRef,
     counterparty,
     counterpartyKey,
@@ -565,7 +558,7 @@ export function parseSMS(
     amount: result.amount,
     currency: result.currency,
     date: result.date,
-    fee: result.fee,
+    charges: result.charges,
     transactionRef: result.transactionRef,
     counterparty: result.counterparty,
     counterpartyKey: result.counterpartyKey,
@@ -585,7 +578,7 @@ export function smsParseResultForApi(p: SmsParseResult) {
     amount: p.amount,
     currency: p.currency,
     date: p.date,
-    fee: p.fee,
+    charges: p.charges,
     transactionRef: p.transactionRef,
     counterparty: p.counterparty,
     counterpartyKey: p.counterpartyKey,

@@ -72,7 +72,7 @@ export async function listAccountsForUser(userId: string) {
       COALESCE(SUM(
         CASE
           WHEN t.type = 'income' THEN ABS(t.amount)
-          WHEN t.type = 'expense' THEN -ABS(t.amount)
+          WHEN t.type = 'expense' THEN -(ABS(t.amount) + COALESCE(t.transaction_charges, 0))
           WHEN t.type = 'transfer' AND t.transfer_leg = 'in' THEN ABS(t.amount)
           WHEN t.type = 'transfer' AND t.transfer_leg = 'out' THEN -ABS(t.amount)
           ELSE 0
@@ -87,7 +87,7 @@ export async function listAccountsForUser(userId: string) {
       ), 0)::text AS total_in,
       COALESCE(SUM(
         CASE
-          WHEN t.type = 'expense' THEN ABS(t.amount)
+          WHEN t.type = 'expense' THEN ABS(t.amount) + COALESCE(t.transaction_charges, 0)
           WHEN t.type = 'transfer' AND t.transfer_leg = 'out' THEN ABS(t.amount)
           ELSE 0
         END

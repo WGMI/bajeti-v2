@@ -5,6 +5,7 @@ import type { CategoryType, TransferLeg } from "@/lib/budget-types";
 export type TransactionRow = {
   id: string;
   amount: string;
+  transaction_charges?: string | null;
   currency?: string | null;
   original_amount?: string | null;
   original_currency?: string | null;
@@ -71,9 +72,14 @@ export function rowToTransaction(row: TransactionRow) {
     row.fx_rate != null && row.fx_rate !== ""
       ? Number(row.fx_rate)
       : null;
+  const charges =
+    row.transaction_charges != null && row.transaction_charges !== ""
+      ? normalizeStoredAmount(Number(row.transaction_charges))
+      : 0;
   return {
     id: row.id,
     amount: normalizeStoredAmount(Number(row.amount)),
+    transactionCharges: charges,
     currency: row.currency ?? null,
     originalAmount,
     originalCurrency: row.original_currency ?? null,

@@ -28,7 +28,7 @@ type BulkItemParsed = {
   amount: number;
   currency: string | null;
   date: string;
-  fee: number;
+  charges: number;
   transactionRef: string | null;
   counterparty: string | null;
   counterpartyKey: string | null;
@@ -110,11 +110,9 @@ export async function POST(request: Request) {
     const {
       messages,
       timestamp = null,
-      includeFeeInExpense = false,
     }: {
       messages: unknown;
       timestamp?: number | null;
-      includeFeeInExpense?: boolean;
     } = body;
 
     if (!Array.isArray(messages)) {
@@ -174,7 +172,6 @@ export async function POST(request: Request) {
           parsed: extractParsedForResponse(
             parseSMS("", {
               timestamp: typeof timestamp === "number" ? timestamp : null,
-              includeFeeInExpense: Boolean(includeFeeInExpense),
               transactionDateSource,
             })
           ),
@@ -185,7 +182,6 @@ export async function POST(request: Request) {
       try {
         const parsed = parseSMS(message, {
           timestamp: typeof timestamp === "number" ? timestamp : null,
-          includeFeeInExpense: Boolean(includeFeeInExpense),
           transactionDateSource,
         });
 
@@ -277,6 +273,7 @@ export async function POST(request: Request) {
           counterparty: parsed.counterparty,
           counterpartyKey: parsed.counterpartyKey,
           transferCategoryId,
+          transactionCharges: parsed.charges,
         });
 
         if (!created) {

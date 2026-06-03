@@ -138,6 +138,17 @@ export function TransactionDetailDialog({
               {transaction.fxRate.toFixed(4)} ({transaction.fxSource ?? "fx"})
             </p>
           ) : null}
+          {(transaction.transactionCharges ?? 0) > 0 && (
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-sm text-muted-foreground">Transaction charges</span>
+              <span className="text-sm font-medium text-muted-foreground">
+                {formatCurrency(
+                  transaction.transactionCharges ?? 0,
+                  transaction.currency ?? currency
+                )}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-muted-foreground">Category</span>
             <span className="font-medium">{category?.name ?? "Unknown"}</span>

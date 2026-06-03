@@ -26,6 +26,7 @@ type PreviewTransaction = {
   type: CategoryType;
   smsCounterparty: string | null;
   smsCounterpartyKey: string | null;
+  transactionCharges: number;
 };
 
 async function resolveEffectiveTransactionType(
@@ -54,7 +55,7 @@ async function resolveEffectiveTransactionType(
  * Parses an SMS and returns a proposed transaction payload without inserting it.
  * Clients can use this to prefill a transaction form and allow edits before save.
  *
- * Body: { message: string, timestamp?: number, includeFeeInExpense?: boolean }
+ * Body: { message: string, timestamp?: number }
  */
 export async function POST(request: Request) {
   const { userId } = await auth();
@@ -67,7 +68,6 @@ export async function POST(request: Request) {
     const {
       message: messageRaw,
       timestamp = null,
-      includeFeeInExpense = false,
     } = body;
 
     if (typeof messageRaw !== "string" || !messageRaw.trim()) {
@@ -80,7 +80,6 @@ export async function POST(request: Request) {
     const transactionDateSource = await getSmsTransactionDateSource(userId);
     const parsed = parseSMS(messageRaw.trim(), {
       timestamp: typeof timestamp === "number" ? timestamp : null,
-      includeFeeInExpense: Boolean(includeFeeInExpense),
       transactionDateSource,
     });
     const parsedForApi = smsParseResultForApi(parsed);
@@ -180,6 +179,7 @@ export async function POST(request: Request) {
       type: transactionType,
       smsCounterparty: parsed.counterparty,
       smsCounterpartyKey: parsed.counterpartyKey,
+      transactionCharges: parsed.charges,
     };
 
     return NextResponse.json({

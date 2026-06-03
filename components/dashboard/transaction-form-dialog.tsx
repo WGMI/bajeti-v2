@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectTrigger,
@@ -49,8 +50,11 @@ function getInitialValues(
       fromAccountId = editingTransaction.counterAccountId ?? fromAccountId;
       toAccountId = editingTransaction.accountId;
     }
+    const charges = editingTransaction.transactionCharges ?? 0;
     return {
       amount: String(Math.abs(editingTransaction.amount)),
+      transactionCharges: charges > 0 ? String(charges) : "",
+      showTransactionCharges: charges > 0,
       categoryId: editingTransaction.categoryId,
       type: editingTransaction.type,
       date: editingTransaction.date.slice(0, 10),
@@ -65,6 +69,8 @@ function getInitialValues(
     : "";
   return {
     amount: "",
+    transactionCharges: "",
+    showTransactionCharges: false,
     categoryId: firstOfType,
     type: typeLock ?? "expense",
     date: new Date().toISOString().slice(0, 10),
@@ -109,6 +115,10 @@ function TransactionFormFields({
     defaultAccount?.id ?? ""
   );
   const [amount, setAmount] = useState(initial.amount);
+  const [transactionCharges, setTransactionCharges] = useState(initial.transactionCharges);
+  const [showTransactionCharges, setShowTransactionCharges] = useState(
+    initial.showTransactionCharges
+  );
   const [categoryId, setCategoryId] = useState(initial.categoryId);
   const [type, setType] = useState<CategoryType>(initial.type);
   const [date, setDate] = useState(initial.date);
@@ -183,6 +193,7 @@ function TransactionFormFields({
         amount: number;
         currency: string | null;
         date: string;
+        charges: number;
         transactionRef: string | null;
         counterparty: string | null;
         counterpartyKey: string | null;
@@ -230,6 +241,10 @@ function TransactionFormFields({
     setAmount(String(preview.amount));
     setDate(preview.date);
     setSmsIdempotencyKey(previewData.smsIdempotencyKey ?? null);
+    if (result.charges > 0) {
+      setShowTransactionCharges(true);
+      setTransactionCharges(String(result.charges));
+    }
     // Set category from SMS type, but prefer an explicit counterparty rule match when present.
     if (result.type === "income" || result.type === "expense" || result.type === "transfer") {
       let matchedCategoryId: string | null = null;
@@ -310,6 +325,18 @@ function TransactionFormFields({
     e.preventDefault();
     const num = parseFloat(amount);
     if (Number.isNaN(num) || num <= 0) return;
+    const chargesNum =
+      !isTransferForm && showTransactionCharges
+        ? parseFloat(transactionCharges)
+        : 0;
+    if (
+      !isTransferForm &&
+      showTransactionCharges &&
+      (Number.isNaN(chargesNum) || chargesNum < 0)
+    ) {
+      setSubmitError("Enter a valid transaction charges amount.");
+      return;
+    }
     const category = getCategoryById(categoryId);
     if (!category) return;
     const txType = isEdit ? type : category.type;
@@ -331,6 +358,7 @@ function TransactionFormFields({
           date,
           notes,
           type: txType,
+          transactionCharges: isTransferForm ? 0 : showTransactionCharges ? chargesNum : 0,
           ...(isTransferForm
             ? { fromAccountId, toAccountId }
             : { accountId: accountId || defaultAccount?.id }),
@@ -347,6 +375,7 @@ function TransactionFormFields({
           notes,
           type: txType,
           idempotencyKey: smsIdempotencyKey ?? undefined,
+          transactionCharges: isTransferForm ? 0 : showTransactionCharges ? chargesNum : 0,
           ...(isTransferForm
             ? { fromAccountId, toAccountId }
             : { accountId: accountId || defaultAccount?.id }),
@@ -401,11 +430,7 @@ function TransactionFormFields({
       const res = await fetch("/api/sms/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages,
-          // Keep existing behavior: the single-SMS flow doesn't include fee-in-expense.
-          includeFeeInExpense: false,
-        }),
+        body: JSON.stringify({ messages }),
       });
 
       const data = (await res.json().catch(() => null)) as SmsBulkResponse | null;
@@ -582,6 +607,40 @@ function TransactionFormFields({
           required
         />
       </div>
+      {!isTransferForm && (
+        <div className="space-y-3 rounded-md border bg-muted/20 px-3 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="transaction-charges-switch" className="cursor-pointer">
+              Transaction charges
+            </Label>
+            <Switch
+              id="transaction-charges-switch"
+              checked={showTransactionCharges}
+              onCheckedChange={(checked) => {
+                setShowTransactionCharges(checked);
+                if (!checked) setTransactionCharges("");
+              }}
+            />
+          </div>
+          {showTransactionCharges && (
+            <div className="space-y-2">
+              <Label htmlFor="transaction-charges">Charges amount</Label>
+              <Input
+                id="transaction-charges"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={transactionCharges}
+                onChange={(e) => setTransactionCharges(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Fees such as M-PESA transaction costs, stored separately from the principal amount.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       {isEdit && (
         <div className="space-y-2">
           <Label htmlFor="transaction-type">Type</Label>

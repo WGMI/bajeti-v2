@@ -49,7 +49,7 @@ function normalizeForHash(text: string): string {
  * Receives a money-related SMS message from the mobile app (or any authenticated
  * client), parses it, and optionally creates a transaction.
  *
- * Body: { message: string, timestamp?: number, includeFeeInExpense?: boolean }
+ * Body: { message: string, timestamp?: number }
  *
  * Auth: Clerk session (Bearer token or cookie). Same as other API routes.
  *
@@ -65,7 +65,6 @@ export async function POST(request: Request) {
     const {
       message: messageRaw,
       timestamp = null,
-      includeFeeInExpense = false,
     } = body;
     if (typeof messageRaw !== "string" || !messageRaw.trim()) {
       return NextResponse.json(
@@ -77,7 +76,6 @@ export async function POST(request: Request) {
     const transactionDateSource = await getSmsTransactionDateSource(userId);
     const parsed = parseSMS(messageRaw.trim(), {
       timestamp: typeof timestamp === "number" ? timestamp : null,
-      includeFeeInExpense: Boolean(includeFeeInExpense),
       transactionDateSource,
     });
 
@@ -179,7 +177,7 @@ export async function POST(request: Request) {
     });
     const existingRows = await sql`
       SELECT
-        t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+        t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
         t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
         t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
@@ -226,12 +224,13 @@ export async function POST(request: Request) {
       counterparty: parsed.counterparty,
       counterpartyKey: parsed.counterpartyKey,
       transferCategoryId,
+      transactionCharges: parsed.charges,
     });
 
     if (!created) {
       const existingAfterConflict = await sql`
         SELECT
-          t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+          t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
           t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
           t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
           t.sms_counterparty, t.sms_counterparty_key,

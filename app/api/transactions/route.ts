@@ -7,7 +7,7 @@ import {
   rowToTransaction,
   type TransactionRow,
 } from "@/lib/transaction-api";
-import { parseAmountForStorage } from "@/lib/transaction-amount";
+import { parseAmountForStorage, parseChargesForStorage } from "@/lib/transaction-amount";
 import { resolveAccountId } from "@/lib/accounts";
 import { createTransferPair } from "@/lib/transfers";
 
@@ -30,7 +30,7 @@ async function fetchTransactionByIdempotency(
 ): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
@@ -56,7 +56,7 @@ async function fetchTransactionByIdempotency(
 async function fetchTransactionById(userId: string, id: string): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
@@ -134,7 +134,7 @@ export async function GET(request: Request) {
       totalsRow = (await sql`
         SELECT
           COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_income,
-          COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_expense
+          COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) + COALESCE(t.transaction_charges, 0) ELSE 0 END), 0)::text AS total_expense
         FROM transactions t
         INNER JOIN categories c ON c.id = t.category_id
         LEFT JOIN accounts ac ON ac.id = t.account_id
@@ -146,7 +146,7 @@ export async function GET(request: Request) {
       totalsRow = (await sql`
         SELECT
           COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0)::text AS total_income,
-          COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) ELSE 0 END), 0)::text AS total_expense
+          COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) + COALESCE(transaction_charges, 0) ELSE 0 END), 0)::text AS total_expense
         FROM transactions
         WHERE user_id = ${userId}
           AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
@@ -157,7 +157,7 @@ export async function GET(request: Request) {
     const limitClause = usePagination ? sql`LIMIT ${limit}` : sql``;
     rows = (await sql`
       SELECT
-        t.id, t.amount, t.currency, t.original_amount, t.original_currency,
+        t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
         t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
         t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
@@ -218,6 +218,7 @@ export async function POST(request: Request) {
       fromAccountId,
       toAccountId,
       idempotencyKey,
+      transactionCharges,
     } = body;
     if (
       amount == null ||
@@ -265,6 +266,10 @@ export async function POST(request: Request) {
     if (numAmount == null) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
+    const numCharges = parseChargesForStorage(transactionCharges);
+    if (numCharges == null) {
+      return NextResponse.json({ error: "Invalid transaction charges" }, { status: 400 });
+    }
 
     const resolvedAccountId = await resolveAccountId(userId, accountId);
 
@@ -281,11 +286,12 @@ export async function POST(request: Request) {
 
     const rows = await sql`
       INSERT INTO transactions (
-        user_id, amount, category_id, account_id, date, notes, type, sms_idempotency_key
+        user_id, amount, transaction_charges, category_id, account_id, date, notes, type, sms_idempotency_key
       )
       VALUES (
         ${userId},
         ${numAmount},
+        ${numCharges},
         ${categoryId},
         ${resolvedAccountId},
         ${date},

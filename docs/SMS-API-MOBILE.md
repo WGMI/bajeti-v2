@@ -14,22 +14,20 @@ For non-SMS mobile endpoints (summary + settings), see `docs/MOBILE-API.md`.
 ```json
 {
   "message": "Full SMS body text (e.g. M-PESA message)",
-  "timestamp": 1710000000000,
-  "includeFeeInExpense": false
+  "timestamp": 1710000000000
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `message` | string | Yes | Raw SMS body. Parsed for amount, type (income/expense), date, fee. |
+| `message` | string | Yes | Raw SMS body. Parsed for amount, type (income/expense), date, and transaction charges. |
 | `timestamp` | number | No | Unix ms; used for date when SMS has no date. |
-| `includeFeeInExpense` | boolean | No | If true, fee is added to expense amount. Default `false`. |
 
 ## Response
 
 - **200** – Success.
-  - `parsed`: `{ message, type, amount, date, fee, transactionRef }` (type is `"income"` | `"expense"` | `"neither"`).
-  - `transaction`: present only when a transaction was created (type income/expense, amount > 0, date present).
+  - `parsed`: `{ message, type, amount, date, charges, transactionRef, counterparty, counterpartyKey, accountReference }` (type is `"income"` | `"expense"` | `"transfer"` | `"neither"`).
+  - `transaction`: present only when a transaction was created (type income/expense/transfer, amount > 0, date present). Includes `transactionCharges` when the SMS contained fees (e.g. “Transaction cost”).
   - `status` can be:
     - `created` when a new transaction is inserted.
     - `duplicate` when the same SMS payload is resent (returns the existing transaction).
@@ -63,6 +61,13 @@ For non-SMS mobile endpoints (summary + settings), see `docs/MOBILE-API.md`.
 ## Behavior
 
 - The same parser as the web “Paste SMS” flow is used (`lib/sms-parser.ts`): M-PESA-style messages, KES amounts, “received” → income, “sent to” / “paid to” / etc. → expense.
+- Transaction charges (e.g. “Transaction cost Ksh 7”) are parsed into `parsed.charges` and saved on the row as `transactionCharges`, separate from the principal `amount`.
 - If the parsed type is `"income"` or `"expense"` and amount and date are present, a transaction is created using the user’s **first category** of that type (categories are created from defaults if the user has none).
 - Duplicate prevention is idempotent: a deterministic key (`user + parsed type + amount + date + tx reference`) is stored on the transaction row, and duplicate SMS submissions return the existing transaction instead of creating a new one.
 - Messages parsed as `"neither"` or “cancelled” or with zero amount do not create a transaction; the response still includes `parsed` for the client to show or log.
+
+## Database migration
+
+Before using transaction charges in production, run:
+
+`psql $DATABASE_URL -f scripts/migrate-transaction-charges.sql`

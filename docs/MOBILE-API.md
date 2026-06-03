@@ -218,6 +218,7 @@ Omit both `limit` and `cursor` to fetch all matching rows in one response (no `n
       "date": "2026-03-15",
       "notes": "Lunch",
       "type": "expense",
+      "transactionCharges": 0,
       "smsCounterparty": null,
       "smsCounterpartyKey": null
     }
@@ -257,6 +258,7 @@ Creates a manual transaction for the signed-in user.
 - `accountId` (optional): for `income` / `expense`, defaults to Wallet.
 - `fromAccountId` / `toAccountId` (required for `transfer`): creates two linked legs (`transferLeg` `out` / `in`) with the same `transferGroupId`. Must be different accounts.
 - `notes` (optional): string, defaults to `""`.
+- `transactionCharges` (optional): non-negative number. Fees stored separately from `amount` (e.g. M-PESA transaction cost). Defaults to `0`. Ignored for `transfer` (stored as `0`).
 - `idempotencyKey` (optional): string (max 255 chars). When provided, a duplicate request returns the existing transaction instead of inserting again. For SMS saves after `POST /api/sms/preview`, use the preview’s `smsIdempotencyKey` value here (do not generate a new UUID).
 
 #### Example request (expense)
@@ -268,7 +270,22 @@ Creates a manual transaction for the signed-in user.
   "categoryId": "cat_1",
   "date": "2026-03-15",
   "type": "expense",
-  "notes": "Lunch"
+  "notes": "Lunch",
+  "transactionCharges": 0
+}
+```
+
+#### Example request (expense with charges)
+
+```json
+{
+  "amount": 500,
+  "transactionCharges": 7,
+  "accountId": "acc_1",
+  "categoryId": "cat_1",
+  "date": "2026-03-15",
+  "type": "expense",
+  "notes": "M-PESA payment"
 }
 ```
 
@@ -307,9 +324,12 @@ Returns a transaction object (see above) plus create metadata:
   "date": "2026-03-15",
   "notes": "Lunch",
   "type": "expense",
+  "transactionCharges": 0,
   "status": "created"
 }
 ```
+
+`totalExpense` on `GET /api/transactions` and summary endpoints include `amount + transactionCharges` for each expense row.
 
 #### Example response (duplicate / idempotent replay)
 
@@ -352,13 +372,16 @@ For rows with a `transferGroupId`, send `fromAccountId` and `toAccountId` to upd
   "categoryId": "cat_1",
   "date": "2026-03-15",
   "type": "expense",
-  "notes": "Lunch (updated)"
+  "notes": "Lunch (updated)",
+  "transactionCharges": 0
 }
 ```
 
+`transactionCharges` is optional on update; omit or send `0` to clear charges. Transfers always store `0`.
+
 #### Response shape
 
-Returns the updated transaction object.
+Returns the updated transaction object (includes `transactionCharges`).
 
 #### Status codes
 
@@ -656,6 +679,10 @@ Before using `/api/settings/mobile`, run:
 
 `psql $DATABASE_URL -f scripts/migrate-user-mobile-settings.sql`
 
+Before using transaction charges (`transactionCharges` on transactions, `charges` in SMS `parsed`), run:
+
+`psql $DATABASE_URL -f scripts/migrate-transaction-charges.sql`
+
 ## 6) SMS endpoints
 
 SMS routes parse M-PESA-style messages (`lib/sms-parser.ts`), apply counterparty category rules when present, and create transactions on the default Wallet account with idempotency. Transfer-classified SMS are inserted as single legs; when a matching second leg exists (same date, amount, shared reference in notes), both rows are linked with a shared `transferGroupId` and `transferLeg` `out`/`in`. See also `docs/SMS-API-MOBILE.md` for mobile client integration notes.
@@ -670,7 +697,7 @@ Returned by `POST /api/sms`, `POST /api/sms/bulk`, and `POST /api/sms/preview`:
   "type": "expense",
   "amount": 500,
   "date": "2026-03-15",
-  "fee": 0,
+  "charges": 0,
   "transactionRef": "ABC123",
   "counterparty": "John Doe",
   "counterpartyKey": "john-doe",
@@ -690,15 +717,15 @@ Ingest one SMS and optionally create a transaction.
 |-------|------|----------|-------------|
 | `message` | string | Yes | Raw SMS body |
 | `timestamp` | number | No | Unix ms; used when date source is `received_at` and SMS has no date |
-| `includeFeeInExpense` | boolean | No | If true, fee is added to expense amount. Default `false` |
+
+Parsed `charges` are stored on the created transaction as `transactionCharges` (separate from `amount`).
 
 #### Example request
 
 ```json
 {
   "message": "You have received KES 500 from John Doe...",
-  "timestamp": 1710000000000,
-  "includeFeeInExpense": false
+  "timestamp": 1710000000000
 }
 ```
 
@@ -708,10 +735,11 @@ Ingest one SMS and optionally create a transaction.
 {
   "status": "created",
   "transactionCreated": true,
-  "parsed": { "message": "...", "type": "income", "amount": 500, "date": "2026-03-15", "fee": 0, "transactionRef": null, "counterparty": "John Doe", "counterpartyKey": "john-doe", "accountReference": null },
+  "parsed": { "message": "...", "type": "income", "amount": 500, "date": "2026-03-15", "charges": 0, "transactionRef": null, "counterparty": "John Doe", "counterpartyKey": "john-doe", "accountReference": null },
   "transaction": {
     "id": "tx_1",
     "amount": 500,
+    "transactionCharges": 0,
     "categoryId": "cat_1",
     "date": "2026-03-15",
     "notes": "You have received...",
@@ -745,7 +773,6 @@ Process up to 100 SMS strings in one request.
 |-------|------|----------|-------------|
 | `messages` | string[] | Yes | Array of raw SMS bodies (max 100) |
 | `timestamp` | number | No | Applied to all items when date source is `received_at` |
-| `includeFeeInExpense` | boolean | No | Default `false` |
 
 #### Example request
 
@@ -766,15 +793,15 @@ Process up to 100 SMS strings in one request.
       "index": 0,
       "status": "created",
       "transactionCreated": true,
-      "parsed": { "message": "...", "type": "expense", "amount": 100, "date": "2026-03-15", "fee": 0, "transactionRef": null, "counterparty": null, "counterpartyKey": null, "accountReference": null },
-      "transaction": { "id": "tx_1", "amount": 100, "categoryId": "cat_1", "date": "2026-03-15", "notes": "...", "type": "expense", "smsCounterparty": null, "smsCounterpartyKey": null }
+      "parsed": { "message": "...", "type": "expense", "amount": 100, "date": "2026-03-15", "charges": 7, "transactionRef": null, "counterparty": null, "counterpartyKey": null, "accountReference": null },
+      "transaction": { "id": "tx_1", "amount": 100, "transactionCharges": 7, "categoryId": "cat_1", "date": "2026-03-15", "notes": "...", "type": "expense", "smsCounterparty": null, "smsCounterpartyKey": null }
     },
     {
       "index": 1,
       "status": "ignored",
       "transactionCreated": false,
       "reason": "Message did not match an income, expense, or transfer transaction",
-      "parsed": { "message": "...", "type": "neither", "amount": 0, "date": "", "fee": 0, "transactionRef": null, "counterparty": null, "counterpartyKey": null, "accountReference": null }
+      "parsed": { "message": "...", "type": "neither", "amount": 0, "date": "", "charges": 0, "transactionRef": null, "counterparty": null, "counterpartyKey": null, "accountReference": null }
     }
   ]
 }
@@ -795,7 +822,7 @@ Parse one SMS and return a proposed transaction without inserting. Use to prefil
 
 #### Request body
 
-Same as `POST /api/sms` (`message`, optional `timestamp`, optional `includeFeeInExpense`).
+Same as `POST /api/sms` (`message`, optional `timestamp`).
 
 #### Response shape
 
@@ -803,9 +830,10 @@ Same as `POST /api/sms` (`message`, optional `timestamp`, optional `includeFeeIn
 {
   "status": "ready",
   "reason": null,
-  "parsed": { "message": "...", "type": "expense", "amount": 50, "date": "2026-03-15", "fee": 0, "transactionRef": null, "counterparty": "Shop", "counterpartyKey": "shop", "accountReference": null },
+  "parsed": { "message": "...", "type": "expense", "amount": 50, "date": "2026-03-15", "charges": 7, "transactionRef": null, "counterparty": "Shop", "counterpartyKey": "shop", "accountReference": null },
   "preview": {
     "amount": 50,
+    "transactionCharges": 7,
     "categoryId": "cat_1",
     "date": "2026-03-15",
     "notes": "Full SMS body...",
