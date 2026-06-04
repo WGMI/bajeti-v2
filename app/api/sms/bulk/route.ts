@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { apiJson } from "@/lib/api-response";
 import { sql } from "@/lib/db";
 import { parseSMS, smsParseResultForApi } from "@/lib/sms-parser";
 import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
@@ -74,6 +74,10 @@ type BulkSummary = {
 
 const MAX_MESSAGES = 100;
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 function extractParsedForResponse(parsed: ReturnType<typeof parseSMS>): BulkItemParsed {
   return smsParseResultForApi(parsed) as BulkItemParsed;
 }
@@ -99,10 +103,14 @@ async function resolveEffectiveTransactionType(
   return ruleRows.length > 0 ? "transfer" : baseType;
 }
 
+export async function GET() {
+  return apiJson({ error: "Method not allowed" }, { status: 405 });
+}
+
 export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return apiJson({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -116,21 +124,21 @@ export async function POST(request: Request) {
     } = body;
 
     if (!Array.isArray(messages)) {
-      return NextResponse.json(
+      return apiJson(
         { error: "Invalid payload: messages must be an array of strings" },
         { status: 400 }
       );
     }
 
     if (messages.length > MAX_MESSAGES) {
-      return NextResponse.json(
+      return apiJson(
         { error: `Too many messages (max ${MAX_MESSAGES})` },
         { status: 400 }
       );
     }
 
     if (!messages.every((m) => typeof m === "string")) {
-      return NextResponse.json({ error: "Invalid payload: all messages must be strings" }, { status: 400 });
+      return apiJson({ error: "Invalid payload: all messages must be strings" }, { status: 400 });
     }
 
     const transactionDateSource = await getSmsTransactionDateSource(userId);
@@ -316,10 +324,10 @@ export async function POST(request: Request) {
       { created: 0, duplicates: 0, ignored: 0, failed: 0 }
     );
 
-    return NextResponse.json({ summary, results });
+    return apiJson({ summary, results });
   } catch (e) {
     console.error("[POST /api/sms/bulk]", e);
-    return NextResponse.json({ error: "Failed to process bulk SMS" }, { status: 500 });
+    return apiJson({ error: "Failed to process bulk SMS" }, { status: 500 });
   }
 }
 
