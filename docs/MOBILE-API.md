@@ -1055,4 +1055,5 @@ Suggests counterparties seen often in the last 90 days that do not yet have a ru
 
 ## Related docs
 
+- Transfers (mobile-focused): `docs/MOBILE-TRANSFERS.md`
 - Mobile SMS client setup: `docs/SMS-API-MOBILE.md`
