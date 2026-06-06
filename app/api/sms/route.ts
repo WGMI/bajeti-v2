@@ -10,6 +10,7 @@ import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { resolveSmsTransactionAmount } from "@/lib/resolve-sms-transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
+import { resolveAccountId } from "@/lib/accounts";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 
@@ -49,7 +50,7 @@ function normalizeForHash(text: string): string {
  * Receives a money-related SMS message from the mobile app (or any authenticated
  * client), parses it, and optionally creates a transaction.
  *
- * Body: { message: string, timestamp?: number }
+ * Body: { message: string, timestamp?: number, accountId?: string }
  *
  * Auth: Clerk session (Bearer token or cookie). Same as other API routes.
  *
@@ -65,6 +66,7 @@ export async function POST(request: Request) {
     const {
       message: messageRaw,
       timestamp = null,
+      accountId: accountIdRaw,
     } = body;
     if (typeof messageRaw !== "string" || !messageRaw.trim()) {
       return NextResponse.json(
@@ -74,6 +76,10 @@ export async function POST(request: Request) {
     }
 
     const transactionDateSource = await getSmsTransactionDateSource(userId);
+    const resolvedAccountId = await resolveAccountId(
+      userId,
+      typeof accountIdRaw === "string" && accountIdRaw.trim() ? accountIdRaw.trim() : undefined
+    );
     const parsed = parseSMS(messageRaw.trim(), {
       timestamp: typeof timestamp === "number" ? timestamp : null,
       transactionDateSource,
@@ -224,6 +230,7 @@ export async function POST(request: Request) {
       counterparty: parsed.counterparty,
       counterpartyKey: parsed.counterpartyKey,
       transferCategoryId,
+      accountId: resolvedAccountId,
       transferToAccountId,
       transactionCharges: parsed.charges,
     });

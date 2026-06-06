@@ -11,6 +11,7 @@ import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { resolveSmsTransactionAmount } from "@/lib/resolve-sms-transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { resolveAccountId } from "@/lib/accounts";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 
 type CategoryRow = { id: string; name: string; type: string };
@@ -118,9 +119,11 @@ export async function POST(request: Request) {
     const {
       messages,
       timestamp = null,
+      accountId: accountIdRaw,
     }: {
       messages: unknown;
       timestamp?: number | null;
+      accountId?: unknown;
     } = body;
 
     if (!Array.isArray(messages)) {
@@ -142,6 +145,10 @@ export async function POST(request: Request) {
     }
 
     const transactionDateSource = await getSmsTransactionDateSource(userId);
+    const resolvedAccountId = await resolveAccountId(
+      userId,
+      typeof accountIdRaw === "string" && accountIdRaw.trim() ? accountIdRaw.trim() : undefined
+    );
 
     // Ensure user has categories, so each parsed SMS can map to its income/expense category.
     let categoryRows = await sql`
@@ -281,6 +288,7 @@ export async function POST(request: Request) {
           counterparty: parsed.counterparty,
           counterpartyKey: parsed.counterpartyKey,
           transferCategoryId,
+          accountId: resolvedAccountId,
           transferToAccountId,
           transactionCharges: parsed.charges,
         });

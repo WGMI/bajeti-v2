@@ -430,7 +430,12 @@ function TransactionFormFields({
       const res = await fetch("/api/sms/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({
+          messages,
+          ...(accountId || defaultAccount?.id
+            ? { accountId: accountId || defaultAccount?.id }
+            : {}),
+        }),
       });
 
       const data = (await res.json().catch(() => null)) as SmsBulkResponse | null;

@@ -717,6 +717,7 @@ Ingest one SMS and optionally create a transaction.
 |-------|------|----------|-------------|
 | `message` | string | Yes | Raw SMS body |
 | `timestamp` | number | No | Unix ms; used when date source is `received_at` and SMS has no date |
+| `accountId` | string | No | Account UUID for created transactions; defaults to Wallet. For transfers, used as the source (`out`) account; destination comes from counterparty rules or Wallet. |
 
 Parsed `charges` are stored on the created transaction as `transactionCharges` (separate from `amount`).
 
@@ -773,6 +774,7 @@ Process up to 100 SMS strings in one request.
 |-------|------|----------|-------------|
 | `messages` | string[] | Yes | Array of raw SMS bodies (max 100) |
 | `timestamp` | number | No | Applied to all items when date source is `received_at` |
+| `accountId` | string | No | Account UUID applied to all created transactions; defaults to Wallet. For transfers, used as the source (`out`) account; destination comes from counterparty rules or Wallet. |
 
 #### Example request
 

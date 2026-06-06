@@ -1,5 +1,5 @@
 import { sql } from "@/lib/db";
-import { ensureDefaultAccount } from "@/lib/accounts";
+import { resolveAccountId } from "@/lib/accounts";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { parseChargesForStorage } from "@/lib/transaction-amount";
 import { groupTransferLegIfMatched } from "@/lib/transfer-grouping";
@@ -25,6 +25,8 @@ export async function insertSmsTransaction(input: {
   counterparty: string | null;
   counterpartyKey: string | null;
   transferCategoryId?: string | null;
+  /** Defaults to Wallet when omitted or invalid. */
+  accountId?: string | null;
   /** From counterparty rule; null uses default Wallet. */
   transferToAccountId?: string | null;
   transactionCharges?: number | null;
@@ -40,12 +42,13 @@ export async function insertSmsTransaction(input: {
       rawMessageHash: input.rawMessageHash,
       counterparty: input.counterparty,
       counterpartyKey: input.counterpartyKey,
+      fromAccountId: input.accountId ?? null,
       transferToAccountId: input.transferToAccountId ?? null,
     });
     if (paired) return paired;
   }
 
-  const accountId = await ensureDefaultAccount(input.userId);
+  const accountId = await resolveAccountId(input.userId, input.accountId);
   const numCharges =
     input.transactionType === "transfer"
       ? 0

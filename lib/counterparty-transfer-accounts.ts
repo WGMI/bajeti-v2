@@ -185,9 +185,11 @@ export async function insertSmsTransferWithDestination(input: {
   rawMessageHash: string;
   counterparty: string | null;
   counterpartyKey: string | null;
+  /** Defaults to Wallet when omitted or invalid. */
+  fromAccountId?: string | null;
   transferToAccountId: string | null;
 }): Promise<ReturnType<typeof rowToTransaction> | null> {
-  const fromAccountId = await ensureDefaultAccount(input.userId);
+  const fromAccountId = await resolveAccountId(input.userId, input.fromAccountId);
   const toAccountId = await resolveRuleTransferToAccountId(
     input.userId,
     input.transferToAccountId
