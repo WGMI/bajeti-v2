@@ -44,7 +44,7 @@ export async function validateTransferToAccountId(
   return accountId;
 }
 
-async function enrichTransactionRow(userId: string, id: string) {
+export async function enrichTransactionRow(userId: string, id: string) {
   const enriched = await sql`
     SELECT
       t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,

@@ -14,6 +14,58 @@ function intersects(a: string[], b: string[]): boolean {
   return a.some((token) => bSet.has(token));
 }
 
+type TransferGroupLegRow = {
+  id: string;
+  transfer_leg: string | null;
+};
+
+/**
+ * When an SMS would create a new transfer pair, look for an existing complete
+ * transfer group (out + in legs) that shares reference tokens — e.g. Equity
+ * "MPESA Ref. UF1L66EON5" and M-PESA "UF1L66EON5 Confirmed".
+ */
+export async function findExistingTransferGroupOutLeg(input: {
+  userId: string;
+  notes: string;
+  amount: number;
+  date: string;
+}): Promise<string | null> {
+  const refs = extractTransferReferenceTokens(input.notes);
+  if (refs.length === 0) return null;
+
+  const candidates = (await sql`
+    SELECT id, notes, transfer_group_id
+    FROM transactions
+    WHERE user_id = ${input.userId}
+      AND date = ${input.date}::date
+      AND ABS(amount) = ABS(${input.amount})
+    ORDER BY (transfer_group_id IS NOT NULL) DESC, id DESC
+    LIMIT 30
+  `) as CandidateRow[];
+
+  for (const candidate of candidates) {
+    if (!candidate.transfer_group_id) continue;
+    if (!intersects(refs, extractTransferReferenceTokens(candidate.notes ?? ""))) {
+      continue;
+    }
+
+    const legs = (await sql`
+      SELECT id, transfer_leg::text AS transfer_leg
+      FROM transactions
+      WHERE user_id = ${input.userId}
+        AND transfer_group_id = ${candidate.transfer_group_id}
+    `) as TransferGroupLegRow[];
+
+    const outLeg = legs.find((leg) => leg.transfer_leg === "out");
+    const inLeg = legs.find((leg) => leg.transfer_leg === "in");
+    if (outLeg && inLeg) {
+      return outLeg.id;
+    }
+  }
+
+  return null;
+}
+
 export async function groupTransferLegIfMatched(input: {
   userId: string;
   transactionId: string;

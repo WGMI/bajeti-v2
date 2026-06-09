@@ -2,8 +2,14 @@ import { sql } from "@/lib/db";
 import { resolveAccountId } from "@/lib/accounts";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { parseChargesForStorage } from "@/lib/transaction-amount";
-import { groupTransferLegIfMatched } from "@/lib/transfer-grouping";
-import { insertSmsTransferWithDestination } from "@/lib/counterparty-transfer-accounts";
+import {
+  findExistingTransferGroupOutLeg,
+  groupTransferLegIfMatched,
+} from "@/lib/transfer-grouping";
+import {
+  enrichTransactionRow,
+  insertSmsTransferWithDestination,
+} from "@/lib/counterparty-transfer-accounts";
 import type { CategoryType } from "@/lib/budget-types";
 import type { CurrencyCode } from "@/lib/currency-codes";
 
@@ -32,6 +38,16 @@ export async function insertSmsTransaction(input: {
   transactionCharges?: number | null;
 }): Promise<ReturnType<typeof rowToTransaction> | null> {
   if (input.transactionType === "transfer") {
+    const existingOutLegId = await findExistingTransferGroupOutLeg({
+      userId: input.userId,
+      notes: input.message,
+      amount: input.amount,
+      date: input.date,
+    });
+    if (existingOutLegId) {
+      return enrichTransactionRow(input.userId, existingOutLegId);
+    }
+
     const paired = await insertSmsTransferWithDestination({
       userId: input.userId,
       amount: input.amount,
