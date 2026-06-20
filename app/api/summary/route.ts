@@ -4,6 +4,8 @@ import { sql } from "@/lib/db";
 
 type SummaryRow = {
   income: string | number | null;
+  expense_principal: string | number | null;
+  transaction_charges: string | number | null;
   expenses: string | number | null;
   transactions_count: string | number | null;
 };
@@ -11,12 +13,16 @@ type SummaryRow = {
 type TrendRow = {
   month: string;
   income: string | number | null;
+  expense_principal: string | number | null;
+  transaction_charges: string | number | null;
   expenses: string | number | null;
 };
 
 type CategoryExpenseRow = {
   category_id: string;
   category_name: string;
+  principal: string | number | null;
+  transaction_charges: string | number | null;
   amount: string | number | null;
 };
 
@@ -75,7 +81,13 @@ export async function GET(request: Request) {
     const currentRows = (await sql`
       SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0) AS income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) + COALESCE(transaction_charges, 0) ELSE 0 END), 0) AS expenses,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'expense'), 0) AS expense_principal,
+        COALESCE(SUM(COALESCE(transaction_charges, 0)) FILTER (WHERE type = 'expense'), 0) AS transaction_charges,
+        COALESCE(
+          SUM(ABS(amount) + COALESCE(transaction_charges, 0))
+            FILTER (WHERE type = 'expense'),
+          0
+        ) AS expenses,
         COUNT(*) AS transactions_count
       FROM transactions
       WHERE user_id = ${userId}
@@ -86,7 +98,13 @@ export async function GET(request: Request) {
     const allTimeRows = (await sql`
       SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0) AS income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) + COALESCE(transaction_charges, 0) ELSE 0 END), 0) AS expenses,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'expense'), 0) AS expense_principal,
+        COALESCE(SUM(COALESCE(transaction_charges, 0)) FILTER (WHERE type = 'expense'), 0) AS transaction_charges,
+        COALESCE(
+          SUM(ABS(amount) + COALESCE(transaction_charges, 0))
+            FILTER (WHERE type = 'expense'),
+          0
+        ) AS expenses,
         COUNT(*) AS transactions_count
       FROM transactions
       WHERE user_id = ${userId}
@@ -103,7 +121,16 @@ export async function GET(request: Request) {
       SELECT
         TO_CHAR(m.month_start, 'YYYY-MM') AS month,
         COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0) AS income,
-        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) + COALESCE(t.transaction_charges, 0) ELSE 0 END), 0) AS expenses
+        COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.type = 'expense'), 0) AS expense_principal,
+        COALESCE(
+          SUM(COALESCE(t.transaction_charges, 0)) FILTER (WHERE t.type = 'expense'),
+          0
+        ) AS transaction_charges,
+        COALESCE(
+          SUM(ABS(t.amount) + COALESCE(t.transaction_charges, 0))
+            FILTER (WHERE t.type = 'expense'),
+          0
+        ) AS expenses
       FROM months m
       LEFT JOIN transactions t
         ON t.user_id = ${userId}
@@ -117,6 +144,8 @@ export async function GET(request: Request) {
       SELECT
         c.id AS category_id,
         c.name AS category_name,
+        COALESCE(SUM(ABS(t.amount)), 0) AS principal,
+        COALESCE(SUM(COALESCE(t.transaction_charges, 0)), 0) AS transaction_charges,
         COALESCE(SUM(ABS(t.amount) + COALESCE(t.transaction_charges, 0)), 0) AS amount
       FROM transactions t
       INNER JOIN categories c
@@ -130,24 +159,39 @@ export async function GET(request: Request) {
       ORDER BY amount DESC, c.name ASC
     `) as CategoryExpenseRow[];
 
-    const current = currentRows[0] ?? { income: 0, expenses: 0, transactions_count: 0 };
-    const allTime = allTimeRows[0] ?? { income: 0, expenses: 0, transactions_count: 0 };
+    const emptySummary: SummaryRow = {
+      income: 0,
+      expense_principal: 0,
+      transaction_charges: 0,
+      expenses: 0,
+      transactions_count: 0,
+    };
+    const current = currentRows[0] ?? emptySummary;
+    const allTime = allTimeRows[0] ?? emptySummary;
 
     const currentIncome = asNumber(current.income);
+    const currentExpensePrincipal = asNumber(current.expense_principal);
+    const currentTransactionCharges = asNumber(current.transaction_charges);
     const currentExpenses = asNumber(current.expenses);
     const allIncome = asNumber(allTime.income);
+    const allExpensePrincipal = asNumber(allTime.expense_principal);
+    const allTransactionCharges = asNumber(allTime.transaction_charges);
     const allExpenses = asNumber(allTime.expenses);
 
     return NextResponse.json({
       period: { month, startDate, endDateExclusive },
       currentMonth: {
         income: currentIncome,
+        expensePrincipal: currentExpensePrincipal,
+        transactionCharges: currentTransactionCharges,
         expenses: currentExpenses,
         balance: currentIncome - currentExpenses,
         transactionsCount: asNumber(current.transactions_count),
       },
       allTime: {
         income: allIncome,
+        expensePrincipal: allExpensePrincipal,
+        transactionCharges: allTransactionCharges,
         expenses: allExpenses,
         balance: allIncome - allExpenses,
         transactionsCount: asNumber(allTime.transactions_count),
@@ -155,12 +199,16 @@ export async function GET(request: Request) {
       trend: trendRows.map((row) => ({
         month: row.month,
         income: asNumber(row.income),
+        expensePrincipal: asNumber(row.expense_principal),
+        transactionCharges: asNumber(row.transaction_charges),
         expenses: asNumber(row.expenses),
         balance: asNumber(row.income) - asNumber(row.expenses),
       })),
       expenseByCategory: expenseByCategoryRows.map((row) => ({
         categoryId: row.category_id,
         categoryName: row.category_name,
+        principal: asNumber(row.principal),
+        transactionCharges: asNumber(row.transaction_charges),
         amount: asNumber(row.amount),
       })),
     });

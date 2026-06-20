@@ -70,24 +70,44 @@ Returns current-month, all-time, trend, and expense-by-category aggregates in on
   },
   "currentMonth": {
     "income": 3000,
+    "expensePrincipal": 893,
+    "transactionCharges": 7,
     "expenses": 900,
     "balance": 2100,
     "transactionsCount": 14
   },
   "allTime": {
     "income": 15000,
+    "expensePrincipal": 7950,
+    "transactionCharges": 50,
     "expenses": 8000,
     "balance": 7000,
     "transactionsCount": 120
   },
   "trend": [
-    { "month": "2025-10", "income": 2000, "expenses": 1500, "balance": 500 }
+    {
+      "month": "2025-10",
+      "income": 2000,
+      "expensePrincipal": 1480,
+      "transactionCharges": 20,
+      "expenses": 1500,
+      "balance": 500
+    }
   ],
   "expenseByCategory": [
-    { "categoryId": "cat_1", "categoryName": "Food", "amount": 300 }
+    {
+      "categoryId": "cat_1",
+      "categoryName": "Food",
+      "principal": 293,
+      "transactionCharges": 7,
+      "amount": 300
+    }
   ]
 }
 ```
+
+`expenses` and category `amount` equal expense principal plus transaction
+charges. Transfers are excluded from income and expense totals.
 
 #### Status codes
 
