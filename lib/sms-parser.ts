@@ -427,7 +427,7 @@ const SMS_CHARGE_AMOUNT =
  */
 export function extractSmsTransactionCharges(message: string): number {
   const chargesRegex = new RegExp(
-    `(?:${SMS_CHARGE_LABELS})\\s*:?\\s*.*?(?:(${SMS_CURRENCY_REGEX_SOURCE}))[\\s.]*${SMS_CHARGE_AMOUNT}|${SMS_CHARGE_AMOUNT}\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
+    `\\b(?:${SMS_CHARGE_LABELS})\\b\\s*:?\\s*.*?(?:(${SMS_CURRENCY_REGEX_SOURCE}))[\\s.]*${SMS_CHARGE_AMOUNT}|${SMS_CHARGE_AMOUNT}\\s*(?:(${SMS_CURRENCY_REGEX_SOURCE}))`,
     "i"
   );
   const chargesMatch = message.match(chargesRegex);
@@ -599,4 +599,3 @@ export function smsParseResultForApi(p: SmsParseResult) {
     accountReference: p.accountReference,
   };
 }
-
