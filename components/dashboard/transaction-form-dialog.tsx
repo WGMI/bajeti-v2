@@ -182,7 +182,6 @@ function TransactionFormFields({
     const trimmed = smsText.trim();
     if (!trimmed) return;
     setSmsParseFeedback(null);
-    console.log("[SMS dialog] typeLock (user's choice):", typeLock);
 
     let previewData: {
       status: string;
@@ -218,8 +217,7 @@ function TransactionFormFields({
         return;
       }
       previewData = await res.json();
-    } catch (e) {
-      console.warn("[SMS dialog] preview request failed", e);
+    } catch {
       setSmsParseFeedback("Could not parse this SMS. Please try again.");
       return;
     }
@@ -234,8 +232,6 @@ function TransactionFormFields({
       setSmsIdempotencyKey(null);
       return;
     }
-
-    console.log("[SMS dialog] parsed result.type:", result.type);
 
     setNotes(result.message);
     setAmount(String(preview.amount));
@@ -278,9 +274,7 @@ function TransactionFormFields({
               );
             matchedCategoryId = match?.categoryId ?? null;
           }
-        } catch (e) {
-          console.warn("[SMS dialog] failed to fetch counterparty rules", e);
-        }
+        } catch {}
       }
 
       const firstOfType = categories.find((c) => c.type === result.type)?.id ?? null;
@@ -288,32 +282,12 @@ function TransactionFormFields({
         ? categories.find((c) => c.id === matchedCategoryId)
         : null;
       const categoryFromSms = matchedCategoryId ?? firstOfType;
-      console.log(
-        "[SMS dialog] setting category from SMS.",
-        "result.type:",
-        result.type,
-        "counterpartyKey:",
-        result.counterpartyKey,
-        "matchedCategoryId:",
-        matchedCategoryId,
-        "firstOfType:",
-        firstOfType
-      );
       if (categoryFromSms) {
         setCategoryId(categoryFromSms);
         const nextType = matchedCategory?.type ?? (isEdit ? result.type : null);
         if (nextType) setType(nextType);
-      } else {
-        console.warn(
-          "[SMS dialog] no category found for type:",
-          result.type,
-          "– ensure there is at least one",
-          result.type,
-          "category."
-        );
       }
     } else {
-      console.log("[SMS dialog] parsed type is neither; not changing category.");
       setSmsIdempotencyKey(null);
     }
     setShowPasteSms(false);

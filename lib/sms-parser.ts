@@ -462,7 +462,6 @@ export function parseSMS(
 
   // Normalize spacing
   const message = messageRaw.replace(/\s+/g, " ").trim();
-  console.log("[SMS parse] normalized message (first 120 chars):", message.slice(0, 120));
 
   // Early exit for cancelled transactions and informational Fuliza notices.
   // Fuliza outstanding/charge reminders are not user-spend events.
@@ -510,10 +509,6 @@ export function parseSMS(
     transaction: ["Transaction cost", "charges", "Interest charged", "Fee"],
   };
   for (const [ruleType, keywords] of Object.entries(smsRules)) {
-    const matched = keywords.filter((kw) => lowerMessage.includes(kw.toLowerCase()));
-    if (matched.length) {
-      console.log("[SMS parse] rule:", ruleType, "keywords matched:", matched);
-    }
     if (
       type === "neither" &&
       keywords.some((kw) => lowerMessage.includes(kw.toLowerCase()))
@@ -523,7 +518,6 @@ export function parseSMS(
       }
     }
   }
-  console.log("[SMS parse] resolved type:", type);
 
   // First currency amount in message is usually the transaction amount.
   const currencyAmounts = extractSmsCurrencyAmounts(message);
@@ -555,7 +549,7 @@ export function parseSMS(
     accountReference = extractSmsAccountReference(message);
   }
 
-  const result = {
+  return {
     message,
     type,
     amount,
@@ -567,18 +561,6 @@ export function parseSMS(
     counterpartyKey,
     accountReference,
   };
-  console.log("[SMS parse] result:", {
-    type: result.type,
-    amount: result.amount,
-    currency: result.currency,
-    date: result.date,
-    charges: result.charges,
-    transactionRef: result.transactionRef,
-    counterparty: result.counterparty,
-    counterpartyKey: result.counterpartyKey,
-    accountReference: result.accountReference,
-  });
-  return result;
 }
 
 // Convenience alias using camelCase naming.

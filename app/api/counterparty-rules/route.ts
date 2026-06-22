@@ -94,11 +94,6 @@ export async function GET() {
             "Wallet"
           : null,
     }));
-    console.log("[GET /api/counterparty-rules] rules snapshot", {
-      userId,
-      count: rules.length,
-      rules,
-    });
     return NextResponse.json({ rules });
   } catch (e) {
     console.error("[GET /api/counterparty-rules]", e);

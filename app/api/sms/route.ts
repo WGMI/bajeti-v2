@@ -168,19 +168,6 @@ export async function POST(request: Request) {
         transactionRef: parsed.transactionRef,
       })
     );
-    console.log("[POST /api/sms] dedupe key computed", {
-      userId,
-      parsedType: parsed.type,
-      effectiveType: transactionType,
-      parsedAmount: parsed.amount,
-      parsedCurrency: parsed.currency,
-      storedAmount: stored.storedAmount,
-      storedCurrency: stored.currency,
-      parsedDate: parsed.date,
-      transactionRef: parsed.transactionRef,
-      smsIdempotencyKey,
-      rawMessageHash,
-    });
     const existingRows = await sql`
       SELECT
         t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
