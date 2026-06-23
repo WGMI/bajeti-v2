@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { ArrowRight, PiggyBank, TrendingUp, Shield, PieChart } from "lucide-react";
@@ -14,9 +15,14 @@ export default async function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b border-primary/10 bg-background/90 backdrop-blur-md">
         <div className="container flex h-14 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-              <PiggyBank className="h-5 w-5" />
-            </div>
+            <Image
+              src="/bajeti-app-icon.png"
+              alt=""
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-lg shadow-sm"
+              priority
+            />
             <span className="text-xl font-semibold tracking-tight">Bajeti</span>
           </div>
           <nav className="hidden gap-6 md:flex">

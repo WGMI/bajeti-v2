@@ -11,6 +11,7 @@ const MAX_SUGGESTIONS = 12;
 type TxRow = {
   id: string;
   notes: string | null;
+  sms_message: string | null;
   type: string;
   sms_counterparty: string | null;
   sms_counterparty_key: string | null;
@@ -36,7 +37,7 @@ export async function GET() {
     );
 
     const txRows = (await sql`
-      SELECT id, notes, type::text AS type, sms_counterparty, sms_counterparty_key
+      SELECT id, notes, sms_message, type::text AS type, sms_counterparty, sms_counterparty_key
       FROM transactions
       WHERE user_id = ${userId} AND date >= ${sinceDate}::date
     `) as TxRow[];
@@ -46,7 +47,7 @@ export async function GET() {
 
     for (const row of txRows) {
       const eff = effectiveCounterpartyFromTransaction(
-        row.notes ?? "",
+        row.sms_message ?? row.notes ?? "",
         row.type as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty

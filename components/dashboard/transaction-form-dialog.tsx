@@ -59,6 +59,7 @@ function getInitialValues(
       type: editingTransaction.type,
       date: editingTransaction.date.slice(0, 10),
       notes: editingTransaction.notes,
+      smsMessage: editingTransaction.smsMessage ?? null,
       accountId: editingTransaction.accountId,
       fromAccountId,
       toAccountId,
@@ -75,6 +76,7 @@ function getInitialValues(
     type: typeLock ?? "expense",
     date: new Date().toISOString().slice(0, 10),
     notes: "",
+    smsMessage: null,
     accountId: defaultAccountId,
     fromAccountId: defaultAccountId,
     toAccountId: "",
@@ -97,7 +99,6 @@ function TransactionFormFields({
   const {
     accounts,
     categories,
-    transactions,
     addTransaction,
     updateTransaction,
     getCategoryById,
@@ -123,6 +124,7 @@ function TransactionFormFields({
   const [type, setType] = useState<CategoryType>(initial.type);
   const [date, setDate] = useState(initial.date);
   const [notes, setNotes] = useState(initial.notes);
+  const [smsMessage, setSmsMessage] = useState<string | null>(initial.smsMessage);
   const [accountId, setAccountId] = useState(initial.accountId);
   const [fromAccountId, setFromAccountId] = useState(initial.fromAccountId);
   const [toAccountId, setToAccountId] = useState(initial.toAccountId);
@@ -233,7 +235,7 @@ function TransactionFormFields({
       return;
     }
 
-    setNotes(result.message);
+    setSmsMessage(result.message);
     setAmount(String(preview.amount));
     setDate(preview.date);
     setSmsIdempotencyKey(previewData.smsIdempotencyKey ?? null);
@@ -331,6 +333,7 @@ function TransactionFormFields({
           categoryId,
           date,
           notes,
+          smsMessage,
           type: txType,
           transactionCharges: isTransferForm ? 0 : showTransactionCharges ? chargesNum : 0,
           ...(isTransferForm
@@ -347,6 +350,7 @@ function TransactionFormFields({
           categoryId,
           date,
           notes,
+          smsMessage,
           type: txType,
           idempotencyKey: smsIdempotencyKey ?? undefined,
           transactionCharges: isTransferForm ? 0 : showTransactionCharges ? chargesNum : 0,
@@ -444,6 +448,7 @@ function TransactionFormFields({
       // Clear the manual fields so "Add transaction" doesn't accidentally submit.
       setAmount("");
       setNotes("");
+      setSmsMessage(null);
       setSmsIdempotencyKey(null);
       setSmsText("");
     } catch (err) {
@@ -700,7 +705,7 @@ function TransactionFormFields({
                 ))
               ) : normalizedCategoryQuery ? (
                 <p className="text-sm text-muted-foreground">
-                  No {effectiveType} category matches "{categoryQuery}".
+                  No {effectiveType} category matches &quot;{categoryQuery}&quot;.
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -730,6 +735,20 @@ function TransactionFormFields({
           onChange={(e) => setNotes(e.target.value)}
         />
       </div>
+      {smsMessage && (
+        <div className="space-y-2">
+          <Label htmlFor="sms-message">SMS message</Label>
+          <textarea
+            id="sms-message"
+            className="flex min-h-[88px] w-full rounded-md border border-input bg-muted/30 px-3 py-2 text-sm"
+            value={smsMessage}
+            readOnly
+          />
+          <p className="text-xs text-muted-foreground">
+            Source message is stored separately and does not replace your notes.
+          </p>
+        </div>
+      )}
       {submitError && (
         <p className="text-sm text-destructive">{submitError}</p>
       )}

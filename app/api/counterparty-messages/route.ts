@@ -12,7 +12,7 @@ const MAX_RETURN = 5;
 
 /**
  * GET /api/counterparty-messages?counterpartyKey=...&transactionType=income|expense
- * Returns a few recent transaction notes (SMS bodies) that match the counterparty key.
+ * Returns a few recent SMS bodies that match the counterparty key.
  */
 export async function GET(request: Request) {
   const { userId } = await auth();
@@ -40,6 +40,7 @@ export async function GET(request: Request) {
       SELECT
         id,
         notes,
+        sms_message,
         date::text AS date,
         amount::text AS amount,
         sms_counterparty,
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
     `) as {
       id: string;
       notes: string | null;
+      sms_message: string | null;
       date: string;
       amount: string;
       sms_counterparty: string | null;
@@ -60,13 +62,13 @@ export async function GET(request: Request) {
     const messages: { id: string; date: string; amount: number; body: string }[] = [];
     for (const row of rows) {
       const eff = effectiveCounterpartyFromTransaction(
-        row.notes ?? "",
+        row.sms_message ?? row.notes ?? "",
         txType as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty
       );
       if (eff?.key !== counterpartyKey) continue;
-      const body = (row.notes ?? "").trim();
+      const body = (row.sms_message ?? "").trim();
       if (!body) continue;
       messages.push({
         id: row.id,

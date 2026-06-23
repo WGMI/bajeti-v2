@@ -18,6 +18,7 @@ export const transferSelectFields = (userId: string) => sql`
   account_id,
   date::text AS date,
   notes,
+  sms_message,
   type,
   sms_counterparty,
   sms_counterparty_key,
@@ -55,6 +56,7 @@ export async function createTransferPair(input: {
   categoryId: string;
   date: string;
   notes: string;
+  smsMessage?: string | null;
   idempotencyKey?: string | null;
 }): Promise<TransactionRow[]> {
   await assertDistinctAccounts(input.userId, input.fromAccountId, input.toAccountId);
@@ -77,6 +79,7 @@ export async function createTransferPair(input: {
       account_id,
       date,
       notes,
+      sms_message,
       type,
       transfer_group_id,
       transfer_leg,
@@ -89,6 +92,7 @@ export async function createTransferPair(input: {
       leg.account_id,
       ${input.date}::date,
       ${input.notes},
+      ${input.smsMessage ?? null},
       'transfer'::category_type,
       ${groupId},
       leg.transfer_leg,
@@ -139,6 +143,7 @@ export async function updateTransferPair(input: {
   categoryId: string;
   date: string;
   notes: string;
+  smsMessage?: string | null;
   fromAccountId: string;
   toAccountId: string;
 }): Promise<TransactionRow[]> {
@@ -155,6 +160,7 @@ export async function updateTransferPair(input: {
       category_id = ${input.categoryId},
       date = ${input.date}::date,
       notes = ${input.notes},
+      sms_message = COALESCE(${input.smsMessage ?? null}, sms_message),
       account_id = CASE transfer_leg
         WHEN 'out' THEN ${input.fromAccountId}::uuid
         WHEN 'in' THEN ${input.toAccountId}::uuid

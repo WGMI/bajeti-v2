@@ -202,6 +202,14 @@ export function TransactionDetailDialog({
               </p>
             </div>
           )}
+          {transaction.smsMessage && (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm text-muted-foreground">SMS message</span>
+              <p className="whitespace-pre-wrap rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                {transaction.smsMessage}
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter className="flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
           <Button

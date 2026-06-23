@@ -49,7 +49,7 @@ export async function enrichTransactionRow(userId: string, id: string) {
     SELECT
       t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-      t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+      t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
       c.name AS category_name,
@@ -81,7 +81,7 @@ async function pairLoneTransferToDestination(input: {
   if (fromAccountId === input.toAccountId) return;
 
   const rows = (await sql`
-    SELECT amount, date::text AS date, notes, transfer_group_id
+    SELECT amount, date::text AS date, notes, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId} AND id = ${input.transactionId}
     LIMIT 1
@@ -89,6 +89,7 @@ async function pairLoneTransferToDestination(input: {
     amount: string;
     date: string;
     notes: string | null;
+    sms_message: string | null;
     transfer_group_id: string | null;
   }[];
   const row = rows[0];
@@ -132,6 +133,7 @@ async function pairLoneTransferToDestination(input: {
       account_id,
       date,
       notes,
+      sms_message,
       type,
       transfer_group_id,
       transfer_leg
@@ -144,6 +146,7 @@ async function pairLoneTransferToDestination(input: {
       ${input.toAccountId},
       ${row.date}::date,
       ${row.notes ?? ""},
+      ${row.sms_message},
       'transfer'::category_type,
       ${groupId},
       'in'::transfer_leg
@@ -204,7 +207,8 @@ export async function insertSmsTransferWithDestination(input: {
       amount: input.amount,
       categoryId: input.categoryId,
       date: input.date,
-      notes: input.message,
+      notes: "",
+      smsMessage: input.message,
       idempotencyKey: input.smsIdempotencyKey,
     });
     const outLeg = rows.find((r) => r.transfer_leg === "out") ?? rows[0];
@@ -213,6 +217,8 @@ export async function insertSmsTransferWithDestination(input: {
     await sql`
       UPDATE transactions
       SET
+        notes = '',
+        sms_message = ${input.message},
         sms_raw_hash = ${input.rawMessageHash},
         sms_counterparty = ${input.counterparty},
         sms_counterparty_key = ${input.counterpartyKey}

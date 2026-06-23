@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Home,
   FolderTree,
   Calendar,
   Receipt,
-  PiggyBank,
   Settings,
   Tag,
   Wallet,
@@ -34,9 +34,13 @@ export function SidebarNavContent({ onLinkClick }: { onLinkClick?: () => void })
         className="flex items-center gap-2 p-4 md:p-5"
         onClick={onLinkClick}
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <PiggyBank className="h-6 w-6" />
-        </div>
+        <Image
+          src="/bajeti-app-icon.png"
+          alt=""
+          width={40}
+          height={40}
+          className="h-10 w-10 rounded-xl"
+        />
         <span className="text-lg font-semibold">Bajeti</span>
       </Link>
       <nav className="flex flex-1 flex-col gap-1 px-2 py-4 md:px-3">

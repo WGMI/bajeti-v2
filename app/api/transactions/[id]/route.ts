@@ -15,7 +15,7 @@ async function fetchTransactionById(userId: string, id: string): Promise<Transac
     SELECT
       t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-      t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+      t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
       c.name AS category_name,
@@ -51,6 +51,7 @@ export async function PATCH(
       categoryId,
       date,
       notes,
+      smsMessage,
       type,
       accountId,
       fromAccountId,
@@ -87,6 +88,10 @@ export async function PATCH(
           categoryId,
           date,
           notes: notes ?? "",
+          smsMessage:
+            typeof smsMessage === "string" && smsMessage.trim()
+              ? smsMessage.trim()
+              : existing.sms_message,
           fromAccountId,
           toAccountId,
         });
@@ -125,6 +130,11 @@ export async function PATCH(
         account_id = ${resolvedAccountId},
         date = ${date},
         notes = ${notes ?? ""},
+        sms_message = ${
+          typeof smsMessage === "string"
+            ? (smsMessage.trim() || null)
+            : existing.sms_message
+        },
         type = (${type})::category_type
       WHERE id = ${id} AND user_id = ${userId}
     `;

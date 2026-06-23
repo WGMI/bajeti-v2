@@ -32,6 +32,7 @@ interface BudgetActions {
     categoryId: string;
     date: string;
     notes: string;
+    smsMessage?: string | null;
     type: Transaction["type"];
     accountId?: string;
     fromAccountId?: string;

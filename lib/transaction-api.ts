@@ -18,6 +18,7 @@ export type TransactionRow = {
   category_name?: string | null;
   date: string;
   notes: string | null;
+  sms_message: string | null;
   type: string;
   sms_counterparty: string | null;
   sms_counterparty_key: string | null;
@@ -96,6 +97,7 @@ export function rowToTransaction(row: TransactionRow) {
     },
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
+    smsMessage: row.sms_message ?? null,
     type: row.type as CategoryType,
     transferGroupId: row.transfer_group_id ?? null,
     transferLeg,
@@ -105,4 +107,3 @@ export function rowToTransaction(row: TransactionRow) {
     smsCounterpartyKey: row.sms_counterparty_key,
   };
 }
-

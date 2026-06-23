@@ -22,6 +22,7 @@ type TxRow = {
   category_id: string;
   date: string;
   notes: string | null;
+  sms_message: string | null;
   type: string;
   sms_counterparty: string | null;
   sms_counterparty_key: string | null;
@@ -34,6 +35,7 @@ function rowToTransaction(row: TxRow) {
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
     notes: row.notes ?? "",
+    smsMessage: row.sms_message ?? null,
     type: row.type as CategoryType,
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
@@ -203,7 +205,7 @@ export async function POST(request: Request) {
     `;
 
     const allRows = (await sql`
-      SELECT id, amount, category_id, date::text AS date, notes, type::text AS type,
+      SELECT id, amount, category_id, date::text AS date, notes, sms_message, type::text AS type,
         sms_counterparty, sms_counterparty_key
       FROM transactions
       WHERE user_id = ${userId} AND type = ${transactionType}::category_type
@@ -215,14 +217,14 @@ export async function POST(request: Request) {
     const matchingIds: string[] = [];
     for (const row of allRows) {
       const eff = effectiveCounterpartyFromTransaction(
-        row.notes ?? "",
+        row.sms_message ?? row.notes ?? "",
         row.type as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty
       );
       const candidateKeys = eff
-        ? candidateCounterpartyRuleKeys(eff.key, row.notes ?? "")
-        : candidateCounterpartyRuleKeys(baseKey, row.notes ?? "");
+        ? candidateCounterpartyRuleKeys(eff.key, row.sms_message ?? row.notes ?? "")
+        : candidateCounterpartyRuleKeys(baseKey, row.sms_message ?? row.notes ?? "");
       if (candidateKeys.includes(counterpartyKey)) matchingIds.push(row.id);
     }
 
@@ -248,7 +250,7 @@ export async function POST(request: Request) {
         });
       }
       updatedRows = (await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, type::text AS type,
+        SELECT id, amount, category_id, date::text AS date, notes, sms_message, type::text AS type,
           sms_counterparty, sms_counterparty_key
         FROM transactions
         WHERE user_id = ${userId} AND id IN (

@@ -172,7 +172,7 @@ export async function POST(request: Request) {
       SELECT
         t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
         t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-        t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+        t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
         t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
         c.name AS category_name,
@@ -227,7 +227,7 @@ export async function POST(request: Request) {
         SELECT
           t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
           t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-          t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+          t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
           t.sms_counterparty, t.sms_counterparty_key,
           t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
           c.name AS category_name,

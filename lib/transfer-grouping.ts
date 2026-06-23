@@ -4,7 +4,7 @@ import { extractTransferReferenceTokens } from "@/lib/sms-parser";
 
 type CandidateRow = {
   id: string;
-  notes: string | null;
+  sms_message: string | null;
   transfer_group_id: string | null;
 };
 
@@ -34,7 +34,7 @@ export async function findExistingTransferGroupOutLeg(input: {
   if (refs.length === 0) return null;
 
   const candidates = (await sql`
-    SELECT id, notes, transfer_group_id
+    SELECT id, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId}
       AND date = ${input.date}::date
@@ -45,7 +45,7 @@ export async function findExistingTransferGroupOutLeg(input: {
 
   for (const candidate of candidates) {
     if (!candidate.transfer_group_id) continue;
-    if (!intersects(refs, extractTransferReferenceTokens(candidate.notes ?? ""))) {
+    if (!intersects(refs, extractTransferReferenceTokens(candidate.sms_message ?? ""))) {
       continue;
     }
 
@@ -78,7 +78,7 @@ export async function groupTransferLegIfMatched(input: {
   if (refs.length === 0) return null;
 
   const candidates = (await sql`
-    SELECT id, notes, transfer_group_id
+    SELECT id, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId}
       AND id <> ${input.transactionId}
@@ -89,7 +89,7 @@ export async function groupTransferLegIfMatched(input: {
   `) as CandidateRow[];
 
   const matched = candidates.find((row) =>
-    intersects(refs, extractTransferReferenceTokens(row.notes ?? ""))
+    intersects(refs, extractTransferReferenceTokens(row.sms_message ?? ""))
   );
   if (!matched) return null;
 

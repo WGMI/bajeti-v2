@@ -43,6 +43,8 @@ export interface Transaction {
   category?: { id: string; name: string };
   date: string; // ISO date YYYY-MM-DD
   notes: string;
+  /** Original source SMS. Kept separate from user-authored notes. */
+  smsMessage?: string | null;
   type: CategoryType;
   transferGroupId?: string | null;
   transferLeg?: TransferLeg | null;

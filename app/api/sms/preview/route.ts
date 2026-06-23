@@ -23,6 +23,7 @@ type PreviewTransaction = {
   categoryId: string | null;
   date: string;
   notes: string;
+  smsMessage: string;
   type: CategoryType;
   smsCounterparty: string | null;
   smsCounterpartyKey: string | null;
@@ -175,7 +176,8 @@ export async function POST(request: Request) {
       fxSource: stored.fxSource,
       categoryId: category?.id ?? null,
       date: parsed.date,
-      notes: parsed.message,
+      notes: "",
+      smsMessage: parsed.message,
       type: transactionType,
       smsCounterparty: parsed.counterparty,
       smsCounterpartyKey: parsed.counterpartyKey,

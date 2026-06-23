@@ -52,14 +52,16 @@ export function CreateCounterpartyRuleDialog({
   useEffect(() => {
     if (!open || !transaction) return;
     const eff = effectiveCounterpartyFromTransaction(
-      transaction.notes,
+      transaction.smsMessage ?? transaction.notes,
       transaction.type,
       transaction.smsCounterpartyKey,
       transaction.smsCounterparty
     );
     // Prefill with readable label; server normalizes on save.
     setKeyDraft(eff?.label ?? eff?.key ?? "");
-    const detectedAccountRef = extractSmsAccountReference(transaction.notes);
+    const detectedAccountRef = extractSmsAccountReference(
+      transaction.smsMessage ?? transaction.notes
+    );
     setScope(detectedAccountRef ? "account" : "all");
     setAccountRefDraft(detectedAccountRef ?? "");
     setCategoryId(transaction.categoryId);

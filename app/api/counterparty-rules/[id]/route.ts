@@ -17,6 +17,7 @@ import {
 type TxRow = {
   id: string;
   notes: string | null;
+  sms_message: string | null;
   type: string;
   sms_counterparty: string | null;
   sms_counterparty_key: string | null;
@@ -145,7 +146,7 @@ export async function PATCH(
     `;
 
     const allRows = (await sql`
-      SELECT id, notes, type::text AS type, sms_counterparty, sms_counterparty_key
+      SELECT id, notes, sms_message, type::text AS type, sms_counterparty, sms_counterparty_key
       FROM transactions
       WHERE user_id = ${userId} AND type = ${transactionType}::category_type
     `) as TxRow[];
@@ -155,14 +156,14 @@ export async function PATCH(
     const matchingIds: string[] = [];
     for (const row of allRows) {
       const eff = effectiveCounterpartyFromTransaction(
-        row.notes ?? "",
+        row.sms_message ?? row.notes ?? "",
         row.type as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty
       );
       const candidateKeys = eff
-        ? candidateCounterpartyRuleKeys(eff.key, row.notes ?? "")
-        : candidateCounterpartyRuleKeys(baseKey, row.notes ?? "");
+        ? candidateCounterpartyRuleKeys(eff.key, row.sms_message ?? row.notes ?? "")
+        : candidateCounterpartyRuleKeys(baseKey, row.sms_message ?? row.notes ?? "");
       if (candidateKeys.includes(counterpartyKey)) matchingIds.push(row.id);
     }
 

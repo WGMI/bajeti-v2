@@ -32,7 +32,7 @@ async function fetchTransactionByIdempotency(
     SELECT
       t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-      t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+      t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
       c.name AS category_name,
@@ -58,7 +58,7 @@ async function fetchTransactionById(userId: string, id: string): Promise<Transac
     SELECT
       t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
       t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-      t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+      t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
       c.name AS category_name,
@@ -111,10 +111,9 @@ export async function GET(request: Request) {
     const tDateToCond = dateTo ? sql`t.date <= ${dateTo}::date` : sql`true`;
     const searchPattern = search ? `%${search}%` : null;
     const searchCond = searchPattern
-      ? sql`(t.notes ILIKE ${searchPattern} OR c.name ILIKE ${searchPattern} OR ac.name ILIKE ${searchPattern})`
+      ? sql`(t.notes ILIKE ${searchPattern} OR t.sms_message ILIKE ${searchPattern} OR c.name ILIKE ${searchPattern} OR ac.name ILIKE ${searchPattern})`
       : sql`true`;
 
-    let rows: TransactionRow[];
     let totalsRow: TotalsRow[] = [];
 
     const cursorParts = cursor?.split("|");
@@ -155,11 +154,11 @@ export async function GET(request: Request) {
     }
 
     const limitClause = usePagination ? sql`LIMIT ${limit}` : sql``;
-    rows = (await sql`
+    const rows = (await sql`
       SELECT
         t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
         t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
-        t.account_id, t.category_id, t.date::text AS date, t.notes, t.type,
+        t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
         t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
         c.name AS category_name,
@@ -213,6 +212,7 @@ export async function POST(request: Request) {
       categoryId,
       date,
       notes = "",
+      smsMessage = null,
       type,
       accountId,
       fromAccountId,
@@ -252,6 +252,8 @@ export async function POST(request: Request) {
           categoryId,
           date,
           notes,
+          smsMessage:
+            typeof smsMessage === "string" && smsMessage.trim() ? smsMessage.trim() : null,
           idempotencyKey: hashedIdempotencyKey,
         });
         const outLeg = pair.find((r) => r.transfer_leg === "out") ?? pair[0];
@@ -286,7 +288,7 @@ export async function POST(request: Request) {
 
     const rows = await sql`
       INSERT INTO transactions (
-        user_id, amount, transaction_charges, category_id, account_id, date, notes, type, sms_idempotency_key
+        user_id, amount, transaction_charges, category_id, account_id, date, notes, sms_message, type, sms_idempotency_key
       )
       VALUES (
         ${userId},
@@ -296,6 +298,7 @@ export async function POST(request: Request) {
         ${resolvedAccountId},
         ${date},
         ${notes},
+        ${typeof smsMessage === "string" && smsMessage.trim() ? smsMessage.trim() : null},
         ${type}::category_type,
         ${hashedIdempotencyKey}
       )

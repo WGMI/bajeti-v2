@@ -17,6 +17,10 @@ export const metadata: Metadata = {
   title: "Bajeti – Simple personal budgeting",
   description:
     "Track spending, set goals, and manage your money with a clean dashboard.",
+  icons: {
+    icon: "/bajeti-app-icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

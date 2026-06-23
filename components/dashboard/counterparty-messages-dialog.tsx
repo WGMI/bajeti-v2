@@ -88,7 +88,7 @@ export function CounterpartyMessagesButton({
           <DialogHeader>
             <DialogTitle>Sample SMS — {dialogTitle}</DialogTitle>
             <DialogDescription>
-              Up to five recent transaction notes that match this payee or payer — type:{" "}
+              Up to five recent SMS messages that match this payee or payer — type:{" "}
               {transactionType}.
             </DialogDescription>
           </DialogHeader>
@@ -104,7 +104,7 @@ export function CounterpartyMessagesButton({
               </p>
             ) : messages.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No matching SMS text found. Messages must still be stored in the transaction notes.
+                No matching SMS text found.
               </p>
             ) : (
               messages.map((m) => (
