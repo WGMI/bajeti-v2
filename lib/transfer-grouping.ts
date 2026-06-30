@@ -1,9 +1,12 @@
 import { randomUUID } from "crypto";
 import { sql } from "@/lib/db";
 import { extractTransferReferenceTokens } from "@/lib/sms-parser";
+import { decryptNumber, decryptOptionalText } from "@/lib/text-encryption";
 
 type CandidateRow = {
   id: string;
+  amount: string | null;
+  amount_encrypted: string | null;
   sms_message: string | null;
   transfer_group_id: string | null;
 };
@@ -34,18 +37,27 @@ export async function findExistingTransferGroupOutLeg(input: {
   if (refs.length === 0) return null;
 
   const candidates = (await sql`
-    SELECT id, sms_message, transfer_group_id
+    SELECT id, amount, amount_encrypted, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId}
       AND date = ${input.date}::date
-      AND ABS(amount) = ABS(${input.amount})
     ORDER BY (transfer_group_id IS NOT NULL) DESC, id DESC
-    LIMIT 30
+    LIMIT 100
   `) as CandidateRow[];
 
   for (const candidate of candidates) {
     if (!candidate.transfer_group_id) continue;
-    if (!intersects(refs, extractTransferReferenceTokens(candidate.sms_message ?? ""))) {
+    const amount = decryptNumber(candidate.amount_encrypted, candidate.amount, {
+      userId: input.userId,
+      field: "amount",
+    });
+    if (Math.abs(Math.abs(amount) - Math.abs(input.amount)) > 0.000001) continue;
+    const smsMessage =
+      decryptOptionalText(candidate.sms_message, {
+        userId: input.userId,
+        field: "sms_message",
+      }) ?? "";
+    if (!intersects(refs, extractTransferReferenceTokens(smsMessage))) {
       continue;
     }
 
@@ -78,19 +90,30 @@ export async function groupTransferLegIfMatched(input: {
   if (refs.length === 0) return null;
 
   const candidates = (await sql`
-    SELECT id, sms_message, transfer_group_id
+    SELECT id, amount, amount_encrypted, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId}
       AND id <> ${input.transactionId}
       AND date = ${input.date}::date
-      AND ABS(amount) = ABS(${input.amount})
     ORDER BY id DESC
-    LIMIT 30
+    LIMIT 100
   `) as CandidateRow[];
 
-  const matched = candidates.find((row) =>
-    intersects(refs, extractTransferReferenceTokens(row.sms_message ?? ""))
-  );
+  const matched = candidates.find((row) => {
+    const amount = decryptNumber(row.amount_encrypted, row.amount, {
+      userId: input.userId,
+      field: "amount",
+    });
+    if (Math.abs(Math.abs(amount) - Math.abs(input.amount)) > 0.000001) {
+      return false;
+    }
+    const smsMessage =
+      decryptOptionalText(row.sms_message, {
+        userId: input.userId,
+        field: "sms_message",
+      }) ?? "";
+    return intersects(refs, extractTransferReferenceTokens(smsMessage));
+  });
   if (!matched) return null;
 
   const groupId = matched.transfer_group_id ?? randomUUID();

@@ -3,6 +3,13 @@ import { sql } from "@/lib/db";
 import { ensureDefaultAccount, resolveAccountId } from "@/lib/accounts";
 import { createTransferPair } from "@/lib/transfers";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import {
+  decryptNumber,
+  decryptOptionalText,
+  decryptText,
+  encryptNumber,
+  encryptText,
+} from "@/lib/text-encryption";
 import type { CategoryType } from "@/lib/budget-types";
 
 /** Rule column null means default Wallet at apply time. */
@@ -47,8 +54,10 @@ export async function validateTransferToAccountId(
 export async function enrichTransactionRow(userId: string, id: string) {
   const enriched = await sql`
     SELECT
-      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-      t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.transaction_charges, t.transaction_charges_encrypted,
+      t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+      t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -81,12 +90,13 @@ async function pairLoneTransferToDestination(input: {
   if (fromAccountId === input.toAccountId) return;
 
   const rows = (await sql`
-    SELECT amount, date::text AS date, notes, sms_message, transfer_group_id
+    SELECT amount, amount_encrypted, date::text AS date, notes, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId} AND id = ${input.transactionId}
     LIMIT 1
   `) as {
-    amount: string;
+    amount: string | null;
+    amount_encrypted: string | null;
     date: string;
     notes: string | null;
     sms_message: string | null;
@@ -114,7 +124,15 @@ async function pairLoneTransferToDestination(input: {
   }
 
   const groupId = randomUUID();
-  const amount = Number(row.amount);
+  const amount = decryptNumber(row.amount_encrypted, row.amount, {
+    userId: input.userId,
+    field: "amount",
+  });
+  const notes = decryptText(row.notes, { userId: input.userId, field: "notes" });
+  const smsMessage = decryptOptionalText(row.sms_message, {
+    userId: input.userId,
+    field: "sms_message",
+  });
   await sql`
     UPDATE transactions
     SET
@@ -128,7 +146,9 @@ async function pairLoneTransferToDestination(input: {
     INSERT INTO transactions (
       user_id,
       amount,
+      amount_encrypted,
       transaction_charges,
+      transaction_charges_encrypted,
       category_id,
       account_id,
       date,
@@ -140,13 +160,20 @@ async function pairLoneTransferToDestination(input: {
     )
     VALUES (
       ${input.userId},
-      ${amount},
-      0,
+      ${null},
+      ${encryptNumber(amount, { userId: input.userId, field: "amount" })},
+      ${null},
+      ${encryptNumber(0, {
+        userId: input.userId,
+        field: "transaction_charges",
+      })},
       ${input.categoryId},
       ${input.toAccountId},
       ${row.date}::date,
-      ${row.notes ?? ""},
-      ${row.sms_message},
+      ${encryptText(notes, { userId: input.userId, field: "notes" })},
+      ${smsMessage == null
+        ? null
+        : encryptText(smsMessage, { userId: input.userId, field: "sms_message" })},
       'transfer'::category_type,
       ${groupId},
       'in'::transfer_leg
@@ -217,8 +244,8 @@ export async function insertSmsTransferWithDestination(input: {
     await sql`
       UPDATE transactions
       SET
-        notes = '',
-        sms_message = ${input.message},
+        notes = ${encryptText("", { userId: input.userId, field: "notes" })},
+        sms_message = ${encryptText(input.message, { userId: input.userId, field: "sms_message" })},
         sms_raw_hash = ${input.rawMessageHash},
         sms_counterparty = ${input.counterparty},
         sms_counterparty_key = ${input.counterpartyKey}

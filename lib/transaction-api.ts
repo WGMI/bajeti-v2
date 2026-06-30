@@ -1,15 +1,26 @@
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 import { normalizeStoredAmount } from "@/lib/transaction-amount";
+import {
+  decryptNumber,
+  decryptOptionalNumber,
+  decryptOptionalText,
+  decryptText,
+} from "@/lib/text-encryption";
 import type { CategoryType, TransferLeg } from "@/lib/budget-types";
 
 export type TransactionRow = {
   id: string;
-  amount: string;
+  user_id?: string;
+  amount: string | null;
+  amount_encrypted?: string | null;
   transaction_charges?: string | null;
+  transaction_charges_encrypted?: string | null;
   currency?: string | null;
   original_amount?: string | null;
+  original_amount_encrypted?: string | null;
   original_currency?: string | null;
   fx_rate?: string | null;
+  fx_rate_encrypted?: string | null;
   fx_rate_date?: string | null;
   fx_source?: string | null;
   account_id: string;
@@ -60,29 +71,36 @@ export function transactionCreateResponse(
 }
 
 export function rowToTransaction(row: TransactionRow) {
+  const userId = row.user_id ?? "";
+  const notes = decryptText(row.notes, { userId, field: "notes" });
+  const smsMessage = decryptOptionalText(row.sms_message, { userId, field: "sms_message" });
   const categoryName = categoryNameFromRow(row);
   const transferLeg =
     row.transfer_leg === "out" || row.transfer_leg === "in"
       ? (row.transfer_leg as TransferLeg)
       : null;
   const originalAmount =
-    row.original_amount != null && row.original_amount !== ""
-      ? normalizeStoredAmount(Number(row.original_amount))
-      : null;
-  const fxRate =
-    row.fx_rate != null && row.fx_rate !== ""
-      ? Number(row.fx_rate)
-      : null;
-  const charges =
-    row.transaction_charges != null && row.transaction_charges !== ""
-      ? normalizeStoredAmount(Number(row.transaction_charges))
-      : 0;
+    decryptOptionalNumber(row.original_amount_encrypted, row.original_amount, {
+      userId,
+      field: "original_amount",
+    });
+  const fxRate = decryptOptionalNumber(row.fx_rate_encrypted, row.fx_rate, {
+    userId,
+    field: "fx_rate",
+  });
+  const charges = decryptOptionalNumber(
+    row.transaction_charges_encrypted,
+    row.transaction_charges,
+    { userId, field: "transaction_charges" }
+  );
   return {
     id: row.id,
-    amount: normalizeStoredAmount(Number(row.amount)),
-    transactionCharges: charges,
+    amount: normalizeStoredAmount(
+      decryptNumber(row.amount_encrypted, row.amount, { userId, field: "amount" })
+    ),
+    transactionCharges: normalizeStoredAmount(charges ?? 0),
     currency: row.currency ?? null,
-    originalAmount,
+    originalAmount: originalAmount == null ? null : normalizeStoredAmount(originalAmount),
     originalCurrency: row.original_currency ?? null,
     fxRate: fxRate != null && Number.isFinite(fxRate) ? fxRate : null,
     fxRateDate: row.fx_rate_date ?? null,
@@ -96,8 +114,8 @@ export function rowToTransaction(row: TransactionRow) {
       name: categoryName,
     },
     date: normalizeTransactionDateFromDb(row.date),
-    notes: row.notes ?? "",
-    smsMessage: row.sms_message ?? null,
+    notes,
+    smsMessage,
     type: row.type as CategoryType,
     transferGroupId: row.transfer_group_id ?? null,
     transferLeg,

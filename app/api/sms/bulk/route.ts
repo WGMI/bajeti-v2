@@ -10,9 +10,10 @@ import { createHash } from "crypto";
 import { buildSmsIdempotencyKey } from "@/lib/sms-idempotency";
 import { resolveSmsTransactionAmount } from "@/lib/resolve-sms-transaction-amount";
 import type { CategoryType } from "@/lib/budget-types";
-import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { rowToTransaction } from "@/lib/transaction-api";
 import { resolveAccountId } from "@/lib/accounts";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
+import { keyedFingerprint } from "@/lib/text-encryption";
 
 type CategoryRow = { id: string; name: string; type: string };
 function sha256(input: string): string {
@@ -254,16 +255,46 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const rawMessageHash = sha256(normalizeForHash(parsed.message));
-        const smsIdempotencyKey = sha256(
-          buildSmsIdempotencyKey({
-            type: transactionType,
-            amount: stored.idempotencyAmount,
-            currency: stored.idempotencyCurrency,
-            date: parsed.date,
-            transactionRef: parsed.transactionRef,
-          })
+        const normalizedMessage = normalizeForHash(parsed.message);
+        const idempotencyInput = buildSmsIdempotencyKey({
+          type: transactionType,
+          amount: stored.idempotencyAmount,
+          currency: stored.idempotencyCurrency,
+          date: parsed.date,
+          transactionRef: parsed.transactionRef,
+        });
+        const rawMessageHash = keyedFingerprint(normalizedMessage, "sms_raw");
+        const smsIdempotencyKey = keyedFingerprint(idempotencyInput, "sms_idempotency");
+        const legacySmsIdempotencyKey = sha256(idempotencyInput);
+        const protectedLegacySmsIdempotencyKey = keyedFingerprint(
+          legacySmsIdempotencyKey,
+          "sms_idempotency"
         );
+        const duplicates = await sql`
+          SELECT 1
+          FROM transactions
+          WHERE user_id = ${userId}
+            AND sms_idempotency_key IN (
+              SELECT jsonb_array_elements_text(
+                ${JSON.stringify([
+                  smsIdempotencyKey,
+                  legacySmsIdempotencyKey,
+                  protectedLegacySmsIdempotencyKey,
+                ])}::jsonb
+              )
+            )
+          LIMIT 1
+        `;
+        if (duplicates.length > 0) {
+          results.push({
+            index: i,
+            status: "ignored",
+            transactionCreated: false,
+            reason: "SMS already processed (duplicate)",
+            parsed: parsedForResponse,
+          });
+          continue;
+        }
 
         const transferCategoryId =
           transactionType === "transfer"

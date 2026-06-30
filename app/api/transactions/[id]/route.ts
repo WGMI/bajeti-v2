@@ -5,6 +5,12 @@ import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { parseAmountForStorage, parseChargesForStorage } from "@/lib/transaction-amount";
 import { resolveAccountId } from "@/lib/accounts";
 import {
+  decryptOptionalText,
+  encryptNumber,
+  encryptOptionalText,
+  encryptText,
+} from "@/lib/text-encryption";
+import {
   deleteTransferGroup,
   findTransferGroupMate,
   updateTransferPair,
@@ -13,8 +19,10 @@ import {
 async function fetchTransactionById(userId: string, id: string): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-      t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.transaction_charges, t.transaction_charges_encrypted,
+      t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+      t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -91,7 +99,7 @@ export async function PATCH(
           smsMessage:
             typeof smsMessage === "string" && smsMessage.trim()
               ? smsMessage.trim()
-              : existing.sms_message,
+              : decryptOptionalText(existing.sms_message, { userId, field: "sms_message" }),
           fromAccountId,
           toAccountId,
         });
@@ -124,15 +132,20 @@ export async function PATCH(
     await sql`
       UPDATE transactions
       SET
-        amount = ${numAmount},
-        transaction_charges = ${numCharges},
+        amount = NULL,
+        amount_encrypted = ${encryptNumber(numAmount, { userId, field: "amount" })},
+        transaction_charges = NULL,
+        transaction_charges_encrypted = ${encryptNumber(numCharges, {
+          userId,
+          field: "transaction_charges",
+        })},
         category_id = ${categoryId},
         account_id = ${resolvedAccountId},
         date = ${date},
-        notes = ${notes ?? ""},
+        notes = ${encryptText(notes ?? "", { userId, field: "notes" })},
         sms_message = ${
           typeof smsMessage === "string"
-            ? (smsMessage.trim() || null)
+            ? encryptOptionalText(smsMessage.trim() || null, { userId, field: "sms_message" })
             : existing.sms_message
         },
         type = (${type})::category_type

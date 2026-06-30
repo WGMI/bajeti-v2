@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { decryptNumber, decryptOptionalNumber } from "@/lib/text-encryption";
 
 export const DEFAULT_ACCOUNT_NAME = "Wallet";
 
@@ -64,39 +65,77 @@ export async function resolveAccountId(
 
 export async function listAccountsForUser(userId: string) {
   await ensureDefaultAccount(userId);
-  const rows = await sql`
+  const accounts = (await sql`
+    SELECT id, name, is_default
+    FROM accounts
+    WHERE user_id = ${userId}
+    ORDER BY is_default DESC, name ASC
+  `) as AccountRow[];
+  const transactions = (await sql`
     SELECT
-      a.id,
-      a.name,
-      a.is_default,
-      COALESCE(SUM(
-        CASE
-          WHEN t.type = 'income' THEN ABS(t.amount)
-          WHEN t.type = 'expense' THEN -(ABS(t.amount) + COALESCE(t.transaction_charges, 0))
-          WHEN t.type = 'transfer' AND t.transfer_leg = 'in' THEN ABS(t.amount)
-          WHEN t.type = 'transfer' AND t.transfer_leg = 'out' THEN -ABS(t.amount)
-          ELSE 0
-        END
-      ), 0)::text AS balance,
-      COALESCE(SUM(
-        CASE
-          WHEN t.type = 'income' THEN ABS(t.amount)
-          WHEN t.type = 'transfer' AND t.transfer_leg = 'in' THEN ABS(t.amount)
-          ELSE 0
-        END
-      ), 0)::text AS total_in,
-      COALESCE(SUM(
-        CASE
-          WHEN t.type = 'expense' THEN ABS(t.amount) + COALESCE(t.transaction_charges, 0)
-          WHEN t.type = 'transfer' AND t.transfer_leg = 'out' THEN ABS(t.amount)
-          ELSE 0
-        END
-      ), 0)::text AS total_out
-    FROM accounts a
-    LEFT JOIN transactions t ON t.account_id = a.id AND t.user_id = ${userId}
-    WHERE a.user_id = ${userId}
-    GROUP BY a.id, a.name, a.is_default
-    ORDER BY a.is_default DESC, a.name ASC
-  `;
-  return rows as Array<AccountRow & { balance: string; total_in: string; total_out: string }>;
+      account_id,
+      amount,
+      amount_encrypted,
+      transaction_charges,
+      transaction_charges_encrypted,
+      type::text AS type,
+      transfer_leg::text AS transfer_leg
+    FROM transactions
+    WHERE user_id = ${userId}
+  `) as {
+    account_id: string;
+    amount: string | null;
+    amount_encrypted: string | null;
+    transaction_charges: string | null;
+    transaction_charges_encrypted: string | null;
+    type: string;
+    transfer_leg: string | null;
+  }[];
+  const totals = new Map<string, { balance: number; totalIn: number; totalOut: number }>();
+
+  for (const transaction of transactions) {
+    const amount = Math.abs(
+      decryptNumber(transaction.amount_encrypted, transaction.amount, {
+        userId,
+        field: "amount",
+      })
+    );
+    const charges = Math.max(
+      0,
+      decryptOptionalNumber(
+        transaction.transaction_charges_encrypted,
+        transaction.transaction_charges,
+        { userId, field: "transaction_charges" }
+      ) ?? 0
+    );
+    const total = totals.get(transaction.account_id) ?? {
+      balance: 0,
+      totalIn: 0,
+      totalOut: 0,
+    };
+    if (
+      transaction.type === "income" ||
+      (transaction.type === "transfer" && transaction.transfer_leg === "in")
+    ) {
+      total.balance += amount;
+      total.totalIn += amount;
+    } else if (transaction.type === "expense") {
+      total.balance -= amount + charges;
+      total.totalOut += amount + charges;
+    } else if (transaction.type === "transfer" && transaction.transfer_leg === "out") {
+      total.balance -= amount;
+      total.totalOut += amount;
+    }
+    totals.set(transaction.account_id, total);
+  }
+
+  return accounts.map((account) => {
+    const total = totals.get(account.id) ?? { balance: 0, totalIn: 0, totalOut: 0 };
+    return {
+      ...account,
+      balance: String(total.balance),
+      total_in: String(total.totalIn),
+      total_out: String(total.totalOut),
+    };
+  });
 }

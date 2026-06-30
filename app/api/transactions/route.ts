@@ -10,11 +10,11 @@ import {
 import { parseAmountForStorage, parseChargesForStorage } from "@/lib/transaction-amount";
 import { resolveAccountId } from "@/lib/accounts";
 import { createTransferPair } from "@/lib/transfers";
-
-type TotalsRow = {
-  total_income: string | null;
-  total_expense: string | null;
-};
+import {
+  encryptNumber,
+  encryptOptionalText,
+  encryptText,
+} from "@/lib/text-encryption";
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -30,8 +30,10 @@ async function fetchTransactionByIdempotency(
 ): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-      t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.transaction_charges, t.transaction_charges_encrypted,
+      t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+      t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -56,8 +58,10 @@ async function fetchTransactionByIdempotency(
 async function fetchTransactionById(userId: string, id: string): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-      t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.transaction_charges, t.transaction_charges_encrypted,
+      t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+      t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
       t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
       t.sms_counterparty, t.sms_counterparty_key,
       t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -102,62 +106,24 @@ export async function GET(request: Request) {
         ? typeFilter
         : null;
 
-    const typeCond = validType ? sql`type = ${validType}::category_type` : sql`true`;
     const tTypeCond = validType ? sql`t.type = ${validType}::category_type` : sql`true`;
     const accountCond = accountFilter ? sql`t.account_id = ${accountFilter}::uuid` : sql`true`;
-    const dateFromCond = dateFrom ? sql`date >= ${dateFrom}::date` : sql`true`;
-    const dateToCond = dateTo ? sql`date <= ${dateTo}::date` : sql`true`;
     const tDateFromCond = dateFrom ? sql`t.date >= ${dateFrom}::date` : sql`true`;
     const tDateToCond = dateTo ? sql`t.date <= ${dateTo}::date` : sql`true`;
-    const searchPattern = search ? `%${search}%` : null;
-    const searchCond = searchPattern
-      ? sql`(t.notes ILIKE ${searchPattern} OR t.sms_message ILIKE ${searchPattern} OR c.name ILIKE ${searchPattern} OR ac.name ILIKE ${searchPattern})`
-      : sql`true`;
-
-    let totalsRow: TotalsRow[] = [];
 
     const cursorParts = cursor?.split("|");
     const cursorDate = cursorParts?.[0];
     const cursorId = cursorParts?.[1];
-    const cursorCond =
-      cursorDate && cursorId
-        ? sql`AND (t.date < ${cursorDate}::date OR (t.date = ${cursorDate}::date AND t.id < ${cursorId}))`
-        : cursor
-          ? null
-          : sql``;
-    if (cursor && !cursorCond) {
+    if (cursor && (!cursorDate || !cursorId)) {
       return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
     }
 
-    if (searchPattern) {
-      totalsRow = (await sql`
-        SELECT
-          COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0)::text AS total_income,
-          COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) + COALESCE(t.transaction_charges, 0) ELSE 0 END), 0)::text AS total_expense
-        FROM transactions t
-        INNER JOIN categories c ON c.id = t.category_id
-        LEFT JOIN accounts ac ON ac.id = t.account_id
-        WHERE t.user_id = ${userId}
-          AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
-          AND ${accountCond} AND ${searchCond}
-      `) as TotalsRow[];
-    } else {
-      totalsRow = (await sql`
-        SELECT
-          COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0)::text AS total_income,
-          COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) + COALESCE(transaction_charges, 0) ELSE 0 END), 0)::text AS total_expense
-        FROM transactions
-        WHERE user_id = ${userId}
-          AND ${typeCond} AND ${dateFromCond} AND ${dateToCond}
-          ${accountFilter ? sql`AND account_id = ${accountFilter}::uuid` : sql``}
-      `) as TotalsRow[];
-    }
-
-    const limitClause = usePagination ? sql`LIMIT ${limit}` : sql``;
     const rows = (await sql`
       SELECT
-        t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-        t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+        t.id, t.user_id, t.amount, t.amount_encrypted,
+        t.transaction_charges, t.transaction_charges_encrypted,
+        t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+        t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
         t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
         t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -174,25 +140,54 @@ export async function GET(request: Request) {
       LEFT JOIN accounts mate_ac ON mate_ac.id = mate.account_id
       WHERE t.user_id = ${userId}
         AND ${tTypeCond} AND ${tDateFromCond} AND ${tDateToCond}
-        AND ${accountCond} AND ${searchCond}
-        ${cursorCond ?? sql``}
+        AND ${accountCond}
       ORDER BY t.date DESC, t.id DESC
-      ${limitClause}
     `) as TransactionRow[];
 
-    const transactions = rows.map(rowToTransaction);
+    const allTransactions = rows.map(rowToTransaction);
+    const normalizedSearch = search?.toLocaleLowerCase();
+    const matchingTransactions = normalizedSearch
+      ? allTransactions.filter((transaction) =>
+          [
+            transaction.notes,
+            transaction.smsMessage,
+            transaction.categoryName,
+            transaction.accountName,
+          ].some((value) => value?.toLocaleLowerCase().includes(normalizedSearch))
+        )
+      : allTransactions;
+    const totalIncome = matchingTransactions.reduce(
+      (sum, transaction) =>
+        transaction.type === "income" ? sum + Math.abs(transaction.amount) : sum,
+      0
+    );
+    const totalExpense = matchingTransactions.reduce(
+      (sum, transaction) =>
+        transaction.type === "expense"
+          ? sum + Math.abs(transaction.amount) + transaction.transactionCharges
+          : sum,
+      0
+    );
+    const afterCursor =
+      cursorDate && cursorId
+        ? matchingTransactions.filter(
+            (transaction) =>
+              transaction.date < cursorDate ||
+              (transaction.date === cursorDate && transaction.id < cursorId)
+          )
+        : matchingTransactions;
+    const transactions = usePagination ? afterCursor.slice(0, limit) : afterCursor;
     const last = transactions[transactions.length - 1];
     const nextCursor =
       usePagination && transactions.length === limit && last
         ? `${last.date}|${last.id}`
         : null;
 
-    const totals = totalsRow[0];
     return NextResponse.json({
       transactions,
       nextCursor,
-      totalIncome: Number(totals?.total_income ?? 0),
-      totalExpense: Number(totals?.total_expense ?? 0),
+      totalIncome,
+      totalExpense,
     });
   } catch (e) {
     console.error(e);
@@ -288,17 +283,23 @@ export async function POST(request: Request) {
 
     const rows = await sql`
       INSERT INTO transactions (
-        user_id, amount, transaction_charges, category_id, account_id, date, notes, sms_message, type, sms_idempotency_key
+        user_id, amount, amount_encrypted, transaction_charges, transaction_charges_encrypted,
+        category_id, account_id, date, notes, sms_message, type, sms_idempotency_key
       )
       VALUES (
         ${userId},
-        ${numAmount},
-        ${numCharges},
+        ${null},
+        ${encryptNumber(numAmount, { userId, field: "amount" })},
+        ${null},
+        ${encryptNumber(numCharges, { userId, field: "transaction_charges" })},
         ${categoryId},
         ${resolvedAccountId},
         ${date},
-        ${notes},
-        ${typeof smsMessage === "string" && smsMessage.trim() ? smsMessage.trim() : null},
+        ${encryptText(notes, { userId, field: "notes" })},
+        ${encryptOptionalText(
+          typeof smsMessage === "string" && smsMessage.trim() ? smsMessage.trim() : null,
+          { userId, field: "sms_message" }
+        )},
         ${type}::category_type,
         ${hashedIdempotencyKey}
       )

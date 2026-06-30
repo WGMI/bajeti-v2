@@ -5,6 +5,11 @@ import { effectiveCounterpartyFromTransaction } from "@/lib/counterparty-helpers
 import { normalizeSmsCounterpartyKey } from "@/lib/sms-parser";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 import { normalizeStoredAmount } from "@/lib/transaction-amount";
+import {
+  decryptNumber,
+  decryptOptionalText,
+  decryptText,
+} from "@/lib/text-encryption";
 import type { CategoryType } from "@/lib/budget-types";
 
 const MAX_SCAN = 400;
@@ -43,6 +48,7 @@ export async function GET(request: Request) {
         sms_message,
         date::text AS date,
         amount::text AS amount,
+        amount_encrypted,
         sms_counterparty,
         sms_counterparty_key
       FROM transactions
@@ -54,7 +60,8 @@ export async function GET(request: Request) {
       notes: string | null;
       sms_message: string | null;
       date: string;
-      amount: string;
+      amount: string | null;
+      amount_encrypted: string | null;
       sms_counterparty: string | null;
       sms_counterparty_key: string | null;
     }[];
@@ -62,18 +69,23 @@ export async function GET(request: Request) {
     const messages: { id: string; date: string; amount: number; body: string }[] = [];
     for (const row of rows) {
       const eff = effectiveCounterpartyFromTransaction(
-        row.sms_message ?? row.notes ?? "",
+        decryptOptionalText(row.sms_message, { userId, field: "sms_message" }) ??
+          decryptText(row.notes, { userId, field: "notes" }),
         txType as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty
       );
       if (eff?.key !== counterpartyKey) continue;
-      const body = (row.sms_message ?? "").trim();
+      const body = (
+        decryptOptionalText(row.sms_message, { userId, field: "sms_message" }) ?? ""
+      ).trim();
       if (!body) continue;
       messages.push({
         id: row.id,
         date: normalizeTransactionDateFromDb(row.date),
-        amount: normalizeStoredAmount(Number(row.amount)),
+        amount: normalizeStoredAmount(
+          decryptNumber(row.amount_encrypted, row.amount, { userId, field: "amount" })
+        ),
         body,
       });
       if (messages.length >= MAX_RETURN) break;

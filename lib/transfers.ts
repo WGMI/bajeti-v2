@@ -1,6 +1,11 @@
 import { randomUUID } from "crypto";
 import { sql } from "@/lib/db";
 import { parseAmountForStorage } from "@/lib/transaction-amount";
+import {
+  encryptNumber,
+  encryptOptionalText,
+  encryptText,
+} from "@/lib/text-encryption";
 import type { TransactionRow } from "@/lib/transaction-api";
 
 const categoryNameSubquery = (userId: string) => sql`
@@ -13,7 +18,19 @@ const accountNameSubquery = (userId: string) => sql`
 
 export const transferSelectFields = (userId: string) => sql`
   id,
+  user_id,
   amount,
+  amount_encrypted,
+  transaction_charges,
+  transaction_charges_encrypted,
+  currency,
+  original_amount,
+  original_amount_encrypted,
+  original_currency,
+  fx_rate,
+  fx_rate_encrypted,
+  fx_rate_date::text AS fx_rate_date,
+  fx_source,
   category_id,
   account_id,
   date::text AS date,
@@ -75,6 +92,9 @@ export async function createTransferPair(input: {
     INSERT INTO transactions (
       user_id,
       amount,
+      amount_encrypted,
+      transaction_charges,
+      transaction_charges_encrypted,
       category_id,
       account_id,
       date,
@@ -87,12 +107,18 @@ export async function createTransferPair(input: {
     )
     SELECT
       ${input.userId},
-      ${numAmount},
+      ${null},
+      ${encryptNumber(numAmount, { userId: input.userId, field: "amount" })},
+      ${null},
+      ${encryptNumber(0, {
+        userId: input.userId,
+        field: "transaction_charges",
+      })},
       ${input.categoryId},
       leg.account_id,
       ${input.date}::date,
-      ${input.notes},
-      ${input.smsMessage ?? null},
+      ${encryptText(input.notes, { userId: input.userId, field: "notes" })},
+      ${encryptOptionalText(input.smsMessage ?? null, { userId: input.userId, field: "sms_message" })},
       'transfer'::category_type,
       ${groupId},
       leg.transfer_leg,
@@ -156,11 +182,20 @@ export async function updateTransferPair(input: {
   await sql`
     UPDATE transactions
     SET
-      amount = ${numAmount},
+      amount = NULL,
+      amount_encrypted = ${encryptNumber(numAmount, {
+        userId: input.userId,
+        field: "amount",
+      })},
+      transaction_charges = NULL,
+      transaction_charges_encrypted = ${encryptNumber(0, {
+        userId: input.userId,
+        field: "transaction_charges",
+      })},
       category_id = ${input.categoryId},
       date = ${input.date}::date,
-      notes = ${input.notes},
-      sms_message = COALESCE(${input.smsMessage ?? null}, sms_message),
+      notes = ${encryptText(input.notes, { userId: input.userId, field: "notes" })},
+      sms_message = COALESCE(${encryptOptionalText(input.smsMessage ?? null, { userId: input.userId, field: "sms_message" })}, sms_message),
       account_id = CASE transfer_leg
         WHEN 'out' THEN ${input.fromAccountId}::uuid
         WHEN 'in' THEN ${input.toAccountId}::uuid

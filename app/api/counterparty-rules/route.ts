@@ -4,6 +4,11 @@ import { sql } from "@/lib/db";
 import { effectiveCounterpartyFromTransaction } from "@/lib/counterparty-helpers";
 import { normalizeTransactionDateFromDb } from "@/lib/format-date";
 import {
+  decryptNumber,
+  decryptOptionalText,
+  decryptText,
+} from "@/lib/text-encryption";
+import {
   candidateCounterpartyRuleKeys,
   normalizeSmsCounterpartyKey,
   splitScopedCounterpartyKey,
@@ -18,7 +23,8 @@ import { listAccountsForUser } from "@/lib/accounts";
 
 type TxRow = {
   id: string;
-  amount: string;
+  amount: string | null;
+  amount_encrypted: string | null;
   category_id: string;
   date: string;
   notes: string | null;
@@ -28,14 +34,19 @@ type TxRow = {
   sms_counterparty_key: string | null;
 };
 
-function rowToTransaction(row: TxRow) {
+function rowToTransaction(row: TxRow, userId: string) {
+  const notes = decryptText(row.notes, { userId, field: "notes" });
+  const smsMessage = decryptOptionalText(row.sms_message, { userId, field: "sms_message" });
   return {
     id: row.id,
-    amount: Number(row.amount),
+    amount: decryptNumber(row.amount_encrypted, row.amount, {
+      userId,
+      field: "amount",
+    }),
     categoryId: row.category_id,
     date: normalizeTransactionDateFromDb(row.date),
-    notes: row.notes ?? "",
-    smsMessage: row.sms_message ?? null,
+    notes,
+    smsMessage,
     type: row.type as CategoryType,
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
@@ -205,7 +216,7 @@ export async function POST(request: Request) {
     `;
 
     const allRows = (await sql`
-      SELECT id, amount, category_id, date::text AS date, notes, sms_message, type::text AS type,
+      SELECT id, amount, amount_encrypted, category_id, date::text AS date, notes, sms_message, type::text AS type,
         sms_counterparty, sms_counterparty_key
       FROM transactions
       WHERE user_id = ${userId} AND type = ${transactionType}::category_type
@@ -216,15 +227,18 @@ export async function POST(request: Request) {
 
     const matchingIds: string[] = [];
     for (const row of allRows) {
+      const body =
+        decryptOptionalText(row.sms_message, { userId, field: "sms_message" }) ??
+        decryptText(row.notes, { userId, field: "notes" });
       const eff = effectiveCounterpartyFromTransaction(
-        row.sms_message ?? row.notes ?? "",
+        body,
         row.type as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty
       );
       const candidateKeys = eff
-        ? candidateCounterpartyRuleKeys(eff.key, row.sms_message ?? row.notes ?? "")
-        : candidateCounterpartyRuleKeys(baseKey, row.sms_message ?? row.notes ?? "");
+        ? candidateCounterpartyRuleKeys(eff.key, body)
+        : candidateCounterpartyRuleKeys(baseKey, body);
       if (candidateKeys.includes(counterpartyKey)) matchingIds.push(row.id);
     }
 
@@ -250,7 +264,7 @@ export async function POST(request: Request) {
         });
       }
       updatedRows = (await sql`
-        SELECT id, amount, category_id, date::text AS date, notes, sms_message, type::text AS type,
+        SELECT id, amount, amount_encrypted, category_id, date::text AS date, notes, sms_message, type::text AS type,
           sms_counterparty, sms_counterparty_key
         FROM transactions
         WHERE user_id = ${userId} AND id IN (
@@ -261,7 +275,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       updatedCount: matchingIds.length,
-      transactions: updatedRows.map(rowToTransaction),
+      transactions: updatedRows.map((row) => rowToTransaction(row, userId)),
     });
   } catch (e) {
     console.error("[POST /api/counterparty-rules]", e);

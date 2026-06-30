@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { effectiveCounterpartyFromTransaction } from "@/lib/counterparty-helpers";
+import { decryptOptionalText, decryptText } from "@/lib/text-encryption";
 import type { CategoryType } from "@/lib/budget-types";
 
 const WINDOW_DAYS = 90;
@@ -46,8 +47,11 @@ export async function GET() {
     const groups = new Map<string, Agg>();
 
     for (const row of txRows) {
+      const body =
+        decryptOptionalText(row.sms_message, { userId, field: "sms_message" }) ??
+        decryptText(row.notes, { userId, field: "notes" });
       const eff = effectiveCounterpartyFromTransaction(
-        row.sms_message ?? row.notes ?? "",
+        body,
         row.type as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty

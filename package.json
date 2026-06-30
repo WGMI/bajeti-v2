@@ -6,6 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "backfill:encrypt-transaction-text": "node scripts/backfill-transaction-text-encryption.mjs",
+    "migrate:encrypt-transaction-amounts": "node scripts/migrate-transaction-amount-encryption.mjs",
+    "backfill:encrypt-transaction-amounts": "node scripts/backfill-transaction-amount-encryption.mjs",
+    "audit:encrypt-transaction-amounts": "node scripts/audit-transaction-amount-encryption.mjs",
+    "finalize:encrypt-transaction-amounts": "node scripts/finalize-transaction-amount-encryption.mjs",
     "lint": "eslint"
   },
   "dependencies": {

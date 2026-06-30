@@ -13,6 +13,7 @@ import type { CategoryType } from "@/lib/budget-types";
 import { resolveAccountId } from "@/lib/accounts";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
+import { keyedFingerprint } from "@/lib/text-encryption";
 
 type CategoryRow = { id: string; name: string; type: string };
 async function resolveEffectiveTransactionType(
@@ -158,20 +159,27 @@ export async function POST(request: Request) {
       );
     }
 
-    const rawMessageHash = sha256(normalizeForHash(parsed.message));
-    const smsIdempotencyKey = sha256(
-      buildSmsIdempotencyKey({
-        type: transactionType,
-        amount: stored.idempotencyAmount,
-        currency: stored.idempotencyCurrency,
-        date: parsed.date,
-        transactionRef: parsed.transactionRef,
-      })
+    const normalizedMessage = normalizeForHash(parsed.message);
+    const idempotencyInput = buildSmsIdempotencyKey({
+      type: transactionType,
+      amount: stored.idempotencyAmount,
+      currency: stored.idempotencyCurrency,
+      date: parsed.date,
+      transactionRef: parsed.transactionRef,
+    });
+    const rawMessageHash = keyedFingerprint(normalizedMessage, "sms_raw");
+    const smsIdempotencyKey = keyedFingerprint(idempotencyInput, "sms_idempotency");
+    const legacySmsIdempotencyKey = sha256(idempotencyInput);
+    const protectedLegacySmsIdempotencyKey = keyedFingerprint(
+      legacySmsIdempotencyKey,
+      "sms_idempotency"
     );
     const existingRows = await sql`
       SELECT
-        t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-        t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+        t.id, t.user_id, t.amount, t.amount_encrypted,
+        t.transaction_charges, t.transaction_charges_encrypted,
+        t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+        t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
         t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
         t.sms_counterparty, t.sms_counterparty_key,
         t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -180,7 +188,16 @@ export async function POST(request: Request) {
       FROM transactions t
       LEFT JOIN categories c ON c.id = t.category_id
       LEFT JOIN accounts ac ON ac.id = t.account_id
-      WHERE t.user_id = ${userId} AND t.sms_idempotency_key = ${smsIdempotencyKey}
+      WHERE t.user_id = ${userId}
+        AND t.sms_idempotency_key IN (
+          SELECT jsonb_array_elements_text(
+            ${JSON.stringify([
+              smsIdempotencyKey,
+              legacySmsIdempotencyKey,
+              protectedLegacySmsIdempotencyKey,
+            ])}::jsonb
+          )
+        )
       LIMIT 1
     `;
     const existing = existingRows[0] as TransactionRow | undefined;
@@ -225,8 +242,10 @@ export async function POST(request: Request) {
     if (!created) {
       const existingAfterConflict = await sql`
         SELECT
-          t.id, t.amount, t.transaction_charges, t.currency, t.original_amount, t.original_currency,
-          t.fx_rate, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
+          t.id, t.user_id, t.amount, t.amount_encrypted,
+          t.transaction_charges, t.transaction_charges_encrypted,
+          t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
+          t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
           t.account_id, t.category_id, t.date::text AS date, t.notes, t.sms_message, t.type,
           t.sms_counterparty, t.sms_counterparty_key,
           t.transfer_group_id, t.transfer_leg::text AS transfer_leg,
@@ -235,7 +254,16 @@ export async function POST(request: Request) {
         FROM transactions t
         LEFT JOIN categories c ON c.id = t.category_id
         LEFT JOIN accounts ac ON ac.id = t.account_id
-        WHERE t.user_id = ${userId} AND t.sms_idempotency_key = ${smsIdempotencyKey}
+        WHERE t.user_id = ${userId}
+          AND t.sms_idempotency_key IN (
+            SELECT jsonb_array_elements_text(
+              ${JSON.stringify([
+                smsIdempotencyKey,
+                legacySmsIdempotencyKey,
+                protectedLegacySmsIdempotencyKey,
+              ])}::jsonb
+            )
+          )
         LIMIT 1
       `;
       const row = existingAfterConflict[0] as TransactionRow | undefined;

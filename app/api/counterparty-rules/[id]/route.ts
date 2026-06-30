@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { effectiveCounterpartyFromTransaction } from "@/lib/counterparty-helpers";
+import { decryptOptionalText, decryptText } from "@/lib/text-encryption";
 import {
   candidateCounterpartyRuleKeys,
   normalizeSmsCounterpartyKey,
@@ -155,15 +156,18 @@ export async function PATCH(
       counterpartyLabel || baseKey.replace(/\b\w/g, (c: string) => c.toUpperCase());
     const matchingIds: string[] = [];
     for (const row of allRows) {
+      const body =
+        decryptOptionalText(row.sms_message, { userId, field: "sms_message" }) ??
+        decryptText(row.notes, { userId, field: "notes" });
       const eff = effectiveCounterpartyFromTransaction(
-        row.sms_message ?? row.notes ?? "",
+        body,
         row.type as CategoryType,
         row.sms_counterparty_key,
         row.sms_counterparty
       );
       const candidateKeys = eff
-        ? candidateCounterpartyRuleKeys(eff.key, row.sms_message ?? row.notes ?? "")
-        : candidateCounterpartyRuleKeys(baseKey, row.sms_message ?? row.notes ?? "");
+        ? candidateCounterpartyRuleKeys(eff.key, body)
+        : candidateCounterpartyRuleKeys(baseKey, body);
       if (candidateKeys.includes(counterpartyKey)) matchingIds.push(row.id);
     }
 

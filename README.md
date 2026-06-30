@@ -4,6 +4,42 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Authenticated REST endpoints for the mobile app are documented in [`docs/MOBILE-API.md`](docs/MOBILE-API.md) (summary, transactions list, settings, SMS). All routes use Clerk: `Authorization: Bearer <clerk_session_token>`.
 
+## Transaction text encryption
+
+Transaction `notes` and raw SMS bodies are encrypted before they are written to the database. Set `BAJETI_TEXT_ENCRYPTION_KEY` to a 32-byte base64 value in every environment that reads or writes transactions:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+After setting the key for an existing database, run the one-time backfill:
+
+```bash
+npm run backfill:encrypt-transaction-text
+```
+
+The backfill command loads `.env.local` and `.env` automatically.
+
+Keep this key outside the database and do not rotate it without re-encrypting existing rows.
+
+### Transaction amount encryption
+
+Amounts, transaction charges, original foreign-currency amounts, and FX rates use
+the same authenticated encryption key with field-specific context. Roll out the
+schema and backfill before deploying the ciphertext-first application:
+
+```bash
+npm run migrate:encrypt-transaction-amounts
+npm run backfill:encrypt-transaction-amounts
+npm run audit:encrypt-transaction-amounts
+```
+
+After the new application version is deployed everywhere, remove legacy plaintext:
+
+```bash
+npm run finalize:encrypt-transaction-amounts
+```
+
 ## Getting Started
 
 First, run the development server:
