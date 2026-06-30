@@ -54,7 +54,7 @@ export async function validateTransferToAccountId(
 export async function enrichTransactionRow(userId: string, id: string) {
   const enriched = await sql`
     SELECT
-      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.id, t.user_id, t.amount_encrypted,
       t.transaction_charges, t.transaction_charges_encrypted,
       t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
       t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
@@ -90,12 +90,11 @@ async function pairLoneTransferToDestination(input: {
   if (fromAccountId === input.toAccountId) return;
 
   const rows = (await sql`
-    SELECT amount, amount_encrypted, date::text AS date, notes, sms_message, transfer_group_id
+    SELECT amount_encrypted, date::text AS date, notes, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId} AND id = ${input.transactionId}
     LIMIT 1
   `) as {
-    amount: string | null;
     amount_encrypted: string | null;
     date: string;
     notes: string | null;
@@ -124,7 +123,7 @@ async function pairLoneTransferToDestination(input: {
   }
 
   const groupId = randomUUID();
-  const amount = decryptNumber(row.amount_encrypted, row.amount, {
+  const amount = decryptNumber(row.amount_encrypted, null, {
     userId: input.userId,
     field: "amount",
   });
@@ -145,7 +144,6 @@ async function pairLoneTransferToDestination(input: {
   await sql`
     INSERT INTO transactions (
       user_id,
-      amount,
       amount_encrypted,
       transaction_charges,
       transaction_charges_encrypted,
@@ -160,7 +158,6 @@ async function pairLoneTransferToDestination(input: {
     )
     VALUES (
       ${input.userId},
-      ${null},
       ${encryptNumber(amount, { userId: input.userId, field: "amount" })},
       ${null},
       ${encryptNumber(0, {

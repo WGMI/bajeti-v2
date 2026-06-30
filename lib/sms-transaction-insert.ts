@@ -78,7 +78,6 @@ export async function insertSmsTransaction(input: {
   const rows = await sql`
     INSERT INTO transactions (
       user_id,
-      amount,
       amount_encrypted,
       transaction_charges,
       transaction_charges_encrypted,
@@ -103,7 +102,6 @@ export async function insertSmsTransaction(input: {
     )
     VALUES (
       ${input.userId},
-      ${null},
       ${encryptNumber(input.amount, { userId: input.userId, field: "amount" })},
       ${null},
       ${encryptNumber(numCharges, {
@@ -139,7 +137,6 @@ export async function insertSmsTransaction(input: {
     RETURNING
       id,
       user_id,
-      amount,
       amount_encrypted,
       transaction_charges,
       transaction_charges_encrypted,
@@ -183,7 +180,7 @@ export async function insertSmsTransaction(input: {
 
   const enriched = await sql`
     SELECT
-      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.id, t.user_id, t.amount_encrypted,
       t.transaction_charges, t.transaction_charges_encrypted,
       t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
       t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,

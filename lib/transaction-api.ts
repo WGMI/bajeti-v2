@@ -11,7 +11,6 @@ import type { CategoryType, TransferLeg } from "@/lib/budget-types";
 export type TransactionRow = {
   id: string;
   user_id?: string;
-  amount: string | null;
   amount_encrypted?: string | null;
   transaction_charges?: string | null;
   transaction_charges_encrypted?: string | null;
@@ -96,7 +95,7 @@ export function rowToTransaction(row: TransactionRow) {
   return {
     id: row.id,
     amount: normalizeStoredAmount(
-      decryptNumber(row.amount_encrypted, row.amount, { userId, field: "amount" })
+      decryptNumber(row.amount_encrypted, null, { userId, field: "amount" })
     ),
     transactionCharges: normalizeStoredAmount(charges ?? 0),
     currency: row.currency ?? null,

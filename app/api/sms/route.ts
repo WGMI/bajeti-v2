@@ -176,7 +176,7 @@ export async function POST(request: Request) {
     );
     const existingRows = await sql`
       SELECT
-        t.id, t.user_id, t.amount, t.amount_encrypted,
+        t.id, t.user_id, t.amount_encrypted,
         t.transaction_charges, t.transaction_charges_encrypted,
         t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
         t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
@@ -242,7 +242,7 @@ export async function POST(request: Request) {
     if (!created) {
       const existingAfterConflict = await sql`
         SELECT
-          t.id, t.user_id, t.amount, t.amount_encrypted,
+          t.id, t.user_id, t.amount_encrypted,
           t.transaction_charges, t.transaction_charges_encrypted,
           t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
           t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,

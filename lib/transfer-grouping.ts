@@ -5,7 +5,6 @@ import { decryptNumber, decryptOptionalText } from "@/lib/text-encryption";
 
 type CandidateRow = {
   id: string;
-  amount: string | null;
   amount_encrypted: string | null;
   sms_message: string | null;
   transfer_group_id: string | null;
@@ -37,7 +36,7 @@ export async function findExistingTransferGroupOutLeg(input: {
   if (refs.length === 0) return null;
 
   const candidates = (await sql`
-    SELECT id, amount, amount_encrypted, sms_message, transfer_group_id
+    SELECT id, amount_encrypted, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId}
       AND date = ${input.date}::date
@@ -47,7 +46,7 @@ export async function findExistingTransferGroupOutLeg(input: {
 
   for (const candidate of candidates) {
     if (!candidate.transfer_group_id) continue;
-    const amount = decryptNumber(candidate.amount_encrypted, candidate.amount, {
+    const amount = decryptNumber(candidate.amount_encrypted, null, {
       userId: input.userId,
       field: "amount",
     });
@@ -90,7 +89,7 @@ export async function groupTransferLegIfMatched(input: {
   if (refs.length === 0) return null;
 
   const candidates = (await sql`
-    SELECT id, amount, amount_encrypted, sms_message, transfer_group_id
+    SELECT id, amount_encrypted, sms_message, transfer_group_id
     FROM transactions
     WHERE user_id = ${input.userId}
       AND id <> ${input.transactionId}
@@ -100,7 +99,7 @@ export async function groupTransferLegIfMatched(input: {
   `) as CandidateRow[];
 
   const matched = candidates.find((row) => {
-    const amount = decryptNumber(row.amount_encrypted, row.amount, {
+    const amount = decryptNumber(row.amount_encrypted, null, {
       userId: input.userId,
       field: "amount",
     });

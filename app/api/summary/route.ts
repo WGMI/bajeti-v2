@@ -14,7 +14,6 @@ type Summary = {
 type SummaryTransactionRow = {
   date: string;
   type: string;
-  amount: string | null;
   amount_encrypted: string | null;
   transaction_charges: string | null;
   transaction_charges_encrypted: string | null;
@@ -89,7 +88,6 @@ export async function GET(request: Request) {
       SELECT
         t.date::text AS date,
         t.type::text AS type,
-        t.amount,
         t.amount_encrypted,
         t.transaction_charges,
         t.transaction_charges_encrypted,
@@ -116,7 +114,7 @@ export async function GET(request: Request) {
 
     for (const row of rows) {
       const amount = Math.abs(
-        decryptNumber(row.amount_encrypted, row.amount, { userId, field: "amount" })
+        decryptNumber(row.amount_encrypted, null, { userId, field: "amount" })
       );
       const charges = Math.max(
         0,

@@ -45,8 +45,17 @@ async function main() {
     );
   }
 
+  const existingFingerprints = await sql`
+    SELECT id, user_id, sms_idempotency_key
+    FROM transactions
+    WHERE sms_idempotency_key IS NOT NULL
+  `;
+  const existingByUserAndKey = new Map(
+    existingFingerprints.map((row) => [`${row.user_id}\0${row.sms_idempotency_key}`, row.id])
+  );
+
   const legacyFingerprints = await sql`
-    SELECT id, sms_idempotency_key, sms_raw_hash
+    SELECT id, user_id, sms_idempotency_key, sms_raw_hash
     FROM transactions
     WHERE sms_raw_hash IS NOT NULL
       AND (
@@ -55,15 +64,28 @@ async function main() {
       )
   `;
   if (legacyFingerprints.length > 0) {
-    const protectedFingerprints = legacyFingerprints.map((row) => ({
-      id: row.id,
-      sms_idempotency_key: row.sms_idempotency_key?.startsWith("hmac:v1:")
+    const reservedTargets = new Map();
+    const protectedFingerprints = legacyFingerprints.map((row) => {
+      let smsIdempotencyKey = row.sms_idempotency_key?.startsWith("hmac:v1:")
         ? row.sms_idempotency_key
-        : fingerprint(row.sms_idempotency_key, "sms_idempotency", key),
-      sms_raw_hash: row.sms_raw_hash.startsWith("hmac:v1:")
-        ? row.sms_raw_hash
-        : fingerprint(row.sms_raw_hash, "sms_raw", key),
-    }));
+        : fingerprint(row.sms_idempotency_key, "sms_idempotency", key);
+      const targetKey = `${row.user_id}\0${smsIdempotencyKey}`;
+      const existingId = existingByUserAndKey.get(targetKey);
+      const reservedId = reservedTargets.get(targetKey);
+
+      if ((existingId && existingId !== row.id) || (reservedId && reservedId !== row.id)) {
+        smsIdempotencyKey = fingerprint(`${row.sms_idempotency_key}\0${row.id}`, "sms_idempotency", key);
+      }
+      reservedTargets.set(targetKey, row.id);
+
+      return {
+        id: row.id,
+        sms_idempotency_key: smsIdempotencyKey,
+        sms_raw_hash: row.sms_raw_hash.startsWith("hmac:v1:")
+          ? row.sms_raw_hash
+          : fingerprint(row.sms_raw_hash, "sms_raw", key),
+      };
+    });
     await sql`
       UPDATE transactions AS transaction
       SET

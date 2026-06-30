@@ -19,7 +19,6 @@ const accountNameSubquery = (userId: string) => sql`
 export const transferSelectFields = (userId: string) => sql`
   id,
   user_id,
-  amount,
   amount_encrypted,
   transaction_charges,
   transaction_charges_encrypted,
@@ -91,7 +90,6 @@ export async function createTransferPair(input: {
   await sql`
     INSERT INTO transactions (
       user_id,
-      amount,
       amount_encrypted,
       transaction_charges,
       transaction_charges_encrypted,
@@ -107,7 +105,6 @@ export async function createTransferPair(input: {
     )
     SELECT
       ${input.userId},
-      ${null},
       ${encryptNumber(numAmount, { userId: input.userId, field: "amount" })},
       ${null},
       ${encryptNumber(0, {
@@ -182,7 +179,6 @@ export async function updateTransferPair(input: {
   await sql`
     UPDATE transactions
     SET
-      amount = NULL,
       amount_encrypted = ${encryptNumber(numAmount, {
         userId: input.userId,
         field: "amount",

@@ -23,7 +23,6 @@ import { listAccountsForUser } from "@/lib/accounts";
 
 type TxRow = {
   id: string;
-  amount: string | null;
   amount_encrypted: string | null;
   category_id: string;
   date: string;
@@ -39,7 +38,7 @@ function rowToTransaction(row: TxRow, userId: string) {
   const smsMessage = decryptOptionalText(row.sms_message, { userId, field: "sms_message" });
   return {
     id: row.id,
-    amount: decryptNumber(row.amount_encrypted, row.amount, {
+    amount: decryptNumber(row.amount_encrypted, null, {
       userId,
       field: "amount",
     }),
@@ -216,7 +215,7 @@ export async function POST(request: Request) {
     `;
 
     const allRows = (await sql`
-      SELECT id, amount, amount_encrypted, category_id, date::text AS date, notes, sms_message, type::text AS type,
+      SELECT id, amount_encrypted, category_id, date::text AS date, notes, sms_message, type::text AS type,
         sms_counterparty, sms_counterparty_key
       FROM transactions
       WHERE user_id = ${userId} AND type = ${transactionType}::category_type
@@ -264,7 +263,7 @@ export async function POST(request: Request) {
         });
       }
       updatedRows = (await sql`
-        SELECT id, amount, amount_encrypted, category_id, date::text AS date, notes, sms_message, type::text AS type,
+        SELECT id, amount_encrypted, category_id, date::text AS date, notes, sms_message, type::text AS type,
           sms_counterparty, sms_counterparty_key
         FROM transactions
         WHERE user_id = ${userId} AND id IN (

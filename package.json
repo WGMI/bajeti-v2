@@ -11,6 +11,7 @@
     "backfill:encrypt-transaction-amounts": "node scripts/backfill-transaction-amount-encryption.mjs",
     "audit:encrypt-transaction-amounts": "node scripts/audit-transaction-amount-encryption.mjs",
     "finalize:encrypt-transaction-amounts": "node scripts/finalize-transaction-amount-encryption.mjs",
+    "drop:legacy-transaction-amount": "node scripts/drop-legacy-transaction-amount-column.mjs",
     "lint": "eslint"
   },
   "dependencies": {

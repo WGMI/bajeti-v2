@@ -74,7 +74,6 @@ export async function listAccountsForUser(userId: string) {
   const transactions = (await sql`
     SELECT
       account_id,
-      amount,
       amount_encrypted,
       transaction_charges,
       transaction_charges_encrypted,
@@ -84,7 +83,6 @@ export async function listAccountsForUser(userId: string) {
     WHERE user_id = ${userId}
   `) as {
     account_id: string;
-    amount: string | null;
     amount_encrypted: string | null;
     transaction_charges: string | null;
     transaction_charges_encrypted: string | null;
@@ -95,7 +93,7 @@ export async function listAccountsForUser(userId: string) {
 
   for (const transaction of transactions) {
     const amount = Math.abs(
-      decryptNumber(transaction.amount_encrypted, transaction.amount, {
+      decryptNumber(transaction.amount_encrypted, null, {
         userId,
         field: "amount",
       })

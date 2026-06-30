@@ -30,7 +30,7 @@ async function fetchTransactionByIdempotency(
 ): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.id, t.user_id, t.amount_encrypted,
       t.transaction_charges, t.transaction_charges_encrypted,
       t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
       t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
@@ -58,7 +58,7 @@ async function fetchTransactionByIdempotency(
 async function fetchTransactionById(userId: string, id: string): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT
-      t.id, t.user_id, t.amount, t.amount_encrypted,
+      t.id, t.user_id, t.amount_encrypted,
       t.transaction_charges, t.transaction_charges_encrypted,
       t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
       t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
@@ -120,7 +120,7 @@ export async function GET(request: Request) {
 
     const rows = (await sql`
       SELECT
-        t.id, t.user_id, t.amount, t.amount_encrypted,
+        t.id, t.user_id, t.amount_encrypted,
         t.transaction_charges, t.transaction_charges_encrypted,
         t.currency, t.original_amount, t.original_amount_encrypted, t.original_currency,
         t.fx_rate, t.fx_rate_encrypted, t.fx_rate_date::text AS fx_rate_date, t.fx_source,
@@ -283,12 +283,11 @@ export async function POST(request: Request) {
 
     const rows = await sql`
       INSERT INTO transactions (
-        user_id, amount, amount_encrypted, transaction_charges, transaction_charges_encrypted,
+        user_id, amount_encrypted, transaction_charges, transaction_charges_encrypted,
         category_id, account_id, date, notes, sms_message, type, sms_idempotency_key
       )
       VALUES (
         ${userId},
-        ${null},
         ${encryptNumber(numAmount, { userId, field: "amount" })},
         ${null},
         ${encryptNumber(numCharges, { userId, field: "transaction_charges" })},

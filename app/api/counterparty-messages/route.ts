@@ -47,7 +47,6 @@ export async function GET(request: Request) {
         notes,
         sms_message,
         date::text AS date,
-        amount::text AS amount,
         amount_encrypted,
         sms_counterparty,
         sms_counterparty_key
@@ -60,7 +59,6 @@ export async function GET(request: Request) {
       notes: string | null;
       sms_message: string | null;
       date: string;
-      amount: string | null;
       amount_encrypted: string | null;
       sms_counterparty: string | null;
       sms_counterparty_key: string | null;
@@ -84,7 +82,7 @@ export async function GET(request: Request) {
         id: row.id,
         date: normalizeTransactionDateFromDb(row.date),
         amount: normalizeStoredAmount(
-          decryptNumber(row.amount_encrypted, row.amount, { userId, field: "amount" })
+          decryptNumber(row.amount_encrypted, null, { userId, field: "amount" })
         ),
         body,
       });
