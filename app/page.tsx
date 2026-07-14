@@ -134,8 +134,8 @@ export default async function LandingPage() {
             Ready to manage your budget?
           </h2>
           <p className="mt-4 text-muted-foreground">
-            Start tracking your money in under a minute. No sign-up required to
-            try the dashboard.
+            Create your private account and start tracking your money in under
+            a minute.
           </p>
           <Link href="/dashboard" className="mt-6 inline-block">
             <Button size="lg" className="rounded-full px-8">
@@ -152,9 +152,14 @@ export default async function LandingPage() {
             <PiggyBank className="h-5 w-5 text-muted-foreground" />
             <span className="text-sm font-medium">Bajeti</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            A simple personal budgeting tool.
-          </p>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <Link href="/privacy" className="transition-colors hover:text-foreground">
+              Privacy policy
+            </Link>
+            <Link href="/delete-account" className="transition-colors hover:text-foreground">
+              Delete account
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

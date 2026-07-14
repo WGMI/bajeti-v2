@@ -21,6 +21,14 @@ export interface Category {
   isDefault?: boolean;
 }
 
+export interface BudgetPlan {
+  id: string;
+  type: "overall" | "category";
+  month: string; // YYYY-MM
+  amount: number;
+  categoryId?: string;
+}
+
 export interface Transaction {
   id: string;
   amount: number;

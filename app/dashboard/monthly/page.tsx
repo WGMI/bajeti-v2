@@ -17,6 +17,7 @@ import {
   getMonthKey,
   getCurrentMonthKey,
 } from "@/lib/budget-utils";
+import { getBudgetReport } from "@/lib/budget-plans";
 import type { Transaction } from "@/lib/budget-types";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +28,7 @@ import {
   withSortDirection,
 } from "@/lib/sort-utils";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
-import { LayoutGrid, List } from "lucide-react";
+import { AlertTriangle, LayoutGrid, List } from "lucide-react";
 import { TransactionDetailDialog } from "@/components/dashboard/transaction-detail-dialog";
 import { TransactionFormDialog } from "@/components/dashboard/transaction-form-dialog";
 
@@ -63,9 +64,22 @@ export default function MonthlyPage() {
     column: "month",
     direction: "desc",
   });
-  const { transactions, getCategoryById, loading, error, refetch } = useBudget();
+  const {
+    transactions,
+    categories,
+    budgetPlans,
+    getCategoryById,
+    loading,
+    error,
+    refetch,
+  } = useBudget();
   const { currency, dateFormat } = useSettings();
   const byMonth = useMemo(() => getMonthTotals(transactions), [transactions]);
+  const currentMonth = getCurrentMonthKey();
+  const budgetReport = useMemo(
+    () => getBudgetReport(budgetPlans, transactions, categories, currentMonth),
+    [budgetPlans, categories, currentMonth, transactions]
+  );
 
   const sortedMonths = useMemo(() => {
     return Object.keys(byMonth).sort((a, b) => {
@@ -183,6 +197,91 @@ export default function MonthlyPage() {
           </div>
         )}
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium">
+            Budget vs actual report: {formatMonthKey(currentMonth)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {budgetReport.totalBudget <= 0 ? (
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Add an overall or category budget to see monthly budget vs actual results.
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/dashboard/budgets">Set budgets</Link>
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Total budget</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatCurrency(budgetReport.totalBudget, currency)}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Total spent</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatCurrency(budgetReport.totalSpent, currency)}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">
+                    {budgetReport.variance >= 0 ? "Under budget" : "Overspent"}
+                  </p>
+                  <p
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      budgetReport.variance >= 0 ? "text-success" : "text-destructive"
+                    )}
+                  >
+                    {formatCurrency(Math.abs(budgetReport.variance), currency)}
+                  </p>
+                </div>
+              </div>
+
+              {budgetReport.categoryLines.length > 0 && (
+                <div className="divide-y rounded-lg border">
+                  {budgetReport.categoryLines.map((line) => (
+                    <div
+                      key={line.plan.id}
+                      className="grid gap-3 p-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {line.overspent > 0 && (
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                        )}
+                        <p className="truncate font-medium uppercase">{line.label}</p>
+                      </div>
+                      <p className="text-sm tabular-nums">
+                        <span className="text-muted-foreground">Budget: </span>
+                        {formatCurrency(line.budget, currency)}
+                      </p>
+                      <p className="text-sm tabular-nums">
+                        <span className="text-muted-foreground">Actual: </span>
+                        {formatCurrency(line.spent, currency)}
+                      </p>
+                      <p
+                        className={cn(
+                          "text-sm font-medium tabular-nums",
+                          line.overspent > 0 ? "text-destructive" : "text-success"
+                        )}
+                      >
+                        {line.overspent > 0 ? "Overspent: " : "Saved: "}
+                        {formatCurrency(line.overspent > 0 ? line.overspent : line.saved, currency)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {sortedMonths.length === 0 ? (
         <Card>

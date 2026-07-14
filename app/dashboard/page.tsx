@@ -4,6 +4,7 @@ import { EarningSummaryCard } from "@/components/dashboard/earning-summary-card"
 import { PaymentStatisticsCard } from "@/components/dashboard/payment-statistics-card";
 import { ActivityGraphCard } from "@/components/dashboard/activity-graph-card";
 import { RecentTransactionsCard } from "@/components/dashboard/recent-transactions-card";
+import { BudgetDashboardCard } from "@/components/dashboard/budget-dashboard-card";
 import { useBudget } from "@/lib/budget-store";
 import { Button } from "@/components/ui/button";
 
@@ -35,6 +36,7 @@ export default function DashboardPage() {
         <EarningSummaryCard />
         <PaymentStatisticsCard />
       </div>
+      <BudgetDashboardCard />
       <RecentTransactionsCard />
       <ActivityGraphCard />
     </div>

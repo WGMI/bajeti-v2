@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Account, Category, Transaction } from "./budget-types";
+import type { Account, BudgetPlan, Category, Transaction } from "./budget-types";
 
 const API = "/api";
 
@@ -22,6 +22,7 @@ interface BudgetState {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  budgetPlans: BudgetPlan[];
   loading: boolean;
   error: string | null;
 }
@@ -57,6 +58,8 @@ interface BudgetActions {
     options?: { reassignToCategoryId?: string; deleteTransactions?: boolean }
   ) => Promise<void>;
   getCategoryById: (id: string) => Category | undefined;
+  upsertBudgetPlan: (plan: Omit<BudgetPlan, "id">) => Promise<BudgetPlan>;
+  deleteBudgetPlan: (id: string) => Promise<void>;
   refetch: () => Promise<void>;
 }
 
@@ -68,6 +71,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [budgetPlans, setBudgetPlans] = useState<BudgetPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,19 +79,22 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [accts, cats, txRes] = await Promise.all([
+      const [accts, cats, txRes, budgets] = await Promise.all([
         fetchJson<Account[]>(`${API}/accounts`),
         fetchJson<Category[]>(`${API}/categories`),
         fetchJson<{ transactions: Transaction[]; nextCursor: string | null }>(`${API}/transactions`),
+        fetchJson<BudgetPlan[]>(`${API}/budgets`),
       ]);
       setAccounts(accts);
       setCategories(cats);
       setTransactions(txRes.transactions);
+      setBudgetPlans(budgets);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
       setAccounts([]);
       setCategories([]);
       setTransactions([]);
+      setBudgetPlans([]);
     } finally {
       setLoading(false);
     }
@@ -204,6 +211,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         await fetchData();
       } else {
         setTransactions((prev) => prev.filter((t) => t.categoryId !== id));
+        setBudgetPlans((prev) => prev.filter((plan) => plan.categoryId !== id));
       }
     },
     [fetchData]
@@ -213,6 +221,27 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     (id: string) => categories.find((c) => c.id === id),
     [categories]
   );
+
+  const upsertBudgetPlan = useCallback(async (plan: Omit<BudgetPlan, "id">) => {
+    const saved = await fetchJson<BudgetPlan>(`${API}/budgets`, {
+      method: "POST",
+      body: JSON.stringify(plan),
+    });
+    setBudgetPlans((prev) => {
+      const next = prev.filter((existing) => existing.id !== saved.id);
+      return [...next, saved].sort((a, b) => {
+        if (a.month !== b.month) return b.month.localeCompare(a.month);
+        if (a.type !== b.type) return a.type === "overall" ? -1 : 1;
+        return (a.categoryId ?? "").localeCompare(b.categoryId ?? "");
+      });
+    });
+    return saved;
+  }, []);
+
+  const deleteBudgetPlan = useCallback(async (id: string) => {
+    await fetchJson(`${API}/budgets/${id}`, { method: "DELETE" });
+    setBudgetPlans((prev) => prev.filter((plan) => plan.id !== id));
+  }, []);
 
   const getAccountById = useCallback(
     (id: string) => accounts.find((a) => a.id === id),
@@ -229,6 +258,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       accounts,
       categories,
       transactions,
+      budgetPlans,
       loading,
       error,
       addTransaction,
@@ -241,6 +271,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       updateCategory,
       deleteCategory,
       getCategoryById,
+      upsertBudgetPlan,
+      deleteBudgetPlan,
       getAccountById,
       getDefaultAccount,
       refetch: fetchData,
@@ -249,6 +281,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       accounts,
       categories,
       transactions,
+      budgetPlans,
       loading,
       error,
       addTransaction,
@@ -261,6 +294,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       updateCategory,
       deleteCategory,
       getCategoryById,
+      upsertBudgetPlan,
+      deleteBudgetPlan,
       getAccountById,
       getDefaultAccount,
       fetchData,
