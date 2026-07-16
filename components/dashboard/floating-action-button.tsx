@@ -8,14 +8,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, TrendingUp, TrendingDown, ArrowLeftRight, Tags } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, ArrowLeftRight, Tags, Mic } from "lucide-react";
 
 export function FloatingActionButton() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const openAddDialog = (addValue: "income" | "expense" | "transfer" | "category") => {
+  const openAddDialog = (
+    addValue: "income" | "expense" | "transfer" | "category" | "voice"
+  ) => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("add", addValue);
     router.push(`${pathname}?${params.toString()}`);
@@ -34,6 +36,10 @@ export function FloatingActionButton() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="mb-2">
+          <DropdownMenuItem onClick={() => openAddDialog("voice")}>
+            <Mic className="h-4 w-4 mr-2" />
+            Speak transaction
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => openAddDialog("income")}>
             <TrendingUp className="h-4 w-4 mr-2 text-success" />
             Add income
