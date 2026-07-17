@@ -180,6 +180,13 @@ function normalizeText(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}.,/\-\s]/gu, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizeSpeechAmountArtifacts(value: string): string {
+  return value.replace(
+    /\b(\d{1,2})[:.](\d{2})\b(?!\s*(?:am|pm)\b)/gi,
+    (_, whole: string, tens: string) => `${whole}${tens}`
+  );
+}
+
 function formatDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -308,7 +315,8 @@ function parseAmount(text: string): { amount: number | null; reason: string | nu
       ""
     )
     .trim();
-  const numeric = principalText.match(
+  const amountText = normalizeSpeechAmountArtifacts(principalText);
+  const numeric = amountText.match(
     /\b(?:kes|ksh|shillings?|bob|usd|dollars?)?\s*(\d[\d,]*(?:\.\d+)?)(k)?\s*(?:kes|ksh|shillings?|bob|usd|dollars?)?\b/i
   );
   if (numeric) {
@@ -321,7 +329,7 @@ function parseAmount(text: string): { amount: number | null; reason: string | nu
     }
   }
 
-  const words = principalText.split(/\s+/);
+  const words = amountText.split(/\s+/);
   for (let start = 0; start < words.length; start += 1) {
     for (let end = Math.min(words.length, start + 8); end > start; end -= 1) {
       const value = parseNumberWords(words.slice(start, end));
@@ -352,6 +360,9 @@ function inferType(text: string): { type: CategoryType | null; reason: string | 
   }
   if (/\b(spent|paid|bought|buy|purchase|purchased|expense|used)\b/.test(text)) {
     return { type: "expense", reason: "Detected expense language." };
+  }
+  if (/\b(?:on|for)\s+[a-z0-9]|\bat\s+[a-z0-9]/.test(text)) {
+    return { type: "expense", reason: "Treated the spoken purchase context as an expense." };
   }
   return { type: null, reason: null };
 }
@@ -475,7 +486,7 @@ function inferCounterparty(original: string): string | null {
 }
 
 function cleanNotes(original: string, counterparty: string | null): string {
-  const trimmed = original.trim().replace(/\s+/g, " ");
+  const trimmed = normalizeSpeechAmountArtifacts(original).trim().replace(/\s+/g, " ");
   if (counterparty && trimmed.length > 80) return counterparty;
   return trimmed.slice(0, 180);
 }
@@ -486,7 +497,7 @@ export function parseVoiceTransaction({
   accounts,
   timestamp,
 }: ParseVoiceTransactionOptions): VoiceTransactionParseResult {
-  const original = transcript.trim();
+  const original = normalizeSpeechAmountArtifacts(transcript.trim());
   const text = normalizeText(original);
   if (text.length < 3) {
     return {

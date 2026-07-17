@@ -38,6 +38,7 @@ interface SpeechRecognitionLike {
 }
 
 interface SpeechRecognitionEventLike {
+  resultIndex: number;
   results: ArrayLike<{
     isFinal?: boolean;
     0?: { transcript?: string };
@@ -62,6 +63,23 @@ function typeLabel(type: CategoryType | undefined) {
   return "Expense";
 }
 
+function collapseRepeatedTranscript(input: string): string {
+  const words = input.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  const output: string[] = [];
+  for (const word of words) {
+    output.push(word);
+    for (let size = Math.min(8, Math.floor(output.length / 2)); size >= 1; size -= 1) {
+      const tail = output.slice(-size).join(" ").toLowerCase();
+      const previous = output.slice(-size * 2, -size).join(" ").toLowerCase();
+      if (tail === previous) {
+        output.splice(output.length - size, size);
+        break;
+      }
+    }
+  }
+  return output.join(" ");
+}
+
 export function GlobalVoiceTransactionDialog() {
   const pathname = usePathname();
   const router = useRouter();
@@ -82,6 +100,7 @@ export function GlobalVoiceTransactionDialog() {
   const [error, setError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const finalTranscriptRef = useRef("");
 
   const preview = previewResult?.preview ?? null;
   const [type, setType] = useState<CategoryType>("expense");
@@ -101,6 +120,7 @@ export function GlobalVoiceTransactionDialog() {
   const close = () => {
     recognitionRef.current?.stop();
     setListening(false);
+    finalTranscriptRef.current = "";
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.delete("add");
     const q = params.toString();
@@ -112,6 +132,7 @@ export function GlobalVoiceTransactionDialog() {
       setTranscript("");
       setPreviewResult(null);
       setError(null);
+      finalTranscriptRef.current = "";
       return;
     }
     setDate(new Date().toISOString().slice(0, 10));
@@ -190,11 +211,24 @@ export function GlobalVoiceTransactionDialog() {
     recognition.interimResults = true;
     recognition.lang = "en-KE";
     recognition.onresult = (event) => {
-      const parts: string[] = [];
-      for (let i = 0; i < event.results.length; i += 1) {
-        parts.push(event.results[i][0]?.transcript ?? "");
+      const interimParts: string[] = [];
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const phrase = event.results[i][0]?.transcript?.trim();
+        if (!phrase) continue;
+        if (event.results[i].isFinal) {
+          const finalSoFar = finalTranscriptRef.current.toLowerCase();
+          if (!finalSoFar.endsWith(phrase.toLowerCase())) {
+            finalTranscriptRef.current = `${finalTranscriptRef.current} ${phrase}`.trim();
+          }
+        } else {
+          interimParts.push(phrase);
+        }
       }
-      setTranscript(parts.join(" ").trim());
+      setTranscript(
+        collapseRepeatedTranscript(
+          `${finalTranscriptRef.current} ${interimParts.join(" ")}`.trim()
+        )
+      );
     };
     recognition.onerror = () => {
       setError("Voice capture failed. Try again or type the transaction.");
