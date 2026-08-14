@@ -10,6 +10,7 @@ import { SortButton } from "@/components/dashboard/sort-button";
 import { Pencil, Trash2, ArrowRight, Loader2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
 import {
   compareIsoDateStringsDesc,
@@ -29,8 +30,9 @@ import { TransactionDetailDialog } from "./transaction-detail-dialog";
 type TransactionSortColumn = "category" | "notes" | "date" | "type" | "amount";
 
 export function RecentTransactionsCard() {
-  const { transactions, getCategoryById, deleteTransaction } = useBudget();
-  const { currency, dateFormat } = useSettings();
+  const { transactions, getCategoryById, deleteTransaction, selectedGroupId } = useBudget();
+  const { dateFormat } = useSettings();
+  const currency = useEffectiveCurrency();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -170,6 +172,7 @@ export function RecentTransactionsCard() {
                         <TransactionSubtitle
                           transaction={tx}
                           secondary={tx.notes || formatDateWithPreference(tx.date, dateFormat)}
+                          showAddedBy={Boolean(selectedGroupId)}
                         />
                       }
                       dateLabel={formatDateWithPreference(tx.date, dateFormat)}

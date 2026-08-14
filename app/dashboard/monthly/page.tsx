@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SortButton } from "@/components/dashboard/sort-button";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import {
   compareIsoDateStringsDesc,
@@ -73,7 +74,8 @@ export default function MonthlyPage() {
     error,
     refetch,
   } = useBudget();
-  const { currency, dateFormat } = useSettings();
+  const { dateFormat } = useSettings();
+  const currency = useEffectiveCurrency();
   const byMonth = useMemo(() => getMonthTotals(transactions), [transactions]);
   const currentMonth = getCurrentMonthKey();
   const budgetReport = useMemo(

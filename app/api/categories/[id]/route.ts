@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import { requireBajetiPermission } from "@/lib/bajeti-scope";
 import type { CategoryType } from "@/lib/budget-types";
 
 type CategoryRow = { id: string; name: string; type: string; is_default: boolean };
@@ -24,6 +25,7 @@ export async function PATCH(
   }
   const { id } = await params;
   try {
+    const scope = await requireBajetiPermission(userId, request, "manage_categories");
     const body = await request.json();
     const { name, type } = body;
     if (!name || !type || !["income", "expense", "transfer"].includes(type)) {
@@ -32,7 +34,11 @@ export async function PATCH(
     const rows = await sql`
       UPDATE categories
       SET name = ${name.trim()}, type = (${type})::category_type
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
       RETURNING id, name, type, is_default
     `;
     const row = rows[0] as CategoryRow | undefined;
@@ -42,6 +48,9 @@ export async function PATCH(
     return NextResponse.json(rowToCategory(row));
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to update category" }, { status: 500 });
   }
 }
@@ -56,9 +65,14 @@ export async function DELETE(
   }
   const { id } = await params;
   try {
+    const scope = await requireBajetiPermission(userId, request, "manage_categories");
     const categoryRows = await sql`
       SELECT id, type FROM categories
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
     `;
     const category = categoryRows[0];
     if (!category) {
@@ -66,7 +80,12 @@ export async function DELETE(
     }
 
     const transactionCountRows = await sql`
-      SELECT COUNT(*)::int AS count FROM transactions WHERE category_id = ${id}
+      SELECT COUNT(*)::int AS count FROM transactions
+      WHERE category_id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
     `;
     const transactionCount = transactionCountRows[0]?.count ?? 0;
 
@@ -82,11 +101,25 @@ export async function DELETE(
 
     if (transactionCount > 0) {
       if (deleteTransactions === true) {
-        await sql`DELETE FROM transactions WHERE category_id = ${id}`;
+        await sql`
+          DELETE FROM transactions
+          WHERE category_id = ${id} AND ${
+            scope.groupId
+              ? sql`group_id = ${scope.groupId}`
+              : sql`user_id = ${userId} AND group_id IS NULL`
+          }
+        `;
       } else if (reassignToCategoryId) {
         const targetRows = await sql`
           SELECT id FROM categories
-          WHERE id = ${reassignToCategoryId} AND user_id = ${userId} AND type = (${category.type})::category_type AND id <> ${id}
+          WHERE id = ${reassignToCategoryId}
+            AND ${
+              scope.groupId
+                ? sql`group_id = ${scope.groupId}`
+                : sql`user_id = ${userId} AND group_id IS NULL`
+            }
+            AND type = (${category.type})::category_type
+            AND id <> ${id}
         `;
         if (!targetRows.length) {
           return NextResponse.json(
@@ -95,7 +128,13 @@ export async function DELETE(
           );
         }
         await sql`
-          UPDATE transactions SET category_id = ${reassignToCategoryId} WHERE category_id = ${id}
+          UPDATE transactions
+          SET category_id = ${reassignToCategoryId}
+          WHERE category_id = ${id} AND ${
+            scope.groupId
+              ? sql`group_id = ${scope.groupId}`
+              : sql`user_id = ${userId} AND group_id IS NULL`
+          }
         `;
       } else {
         return NextResponse.json(
@@ -107,11 +146,18 @@ export async function DELETE(
 
     await sql`
       DELETE FROM categories
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
     `;
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to delete category" }, { status: 500 });
   }
 }

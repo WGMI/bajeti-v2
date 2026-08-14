@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import {
   createBudgetId,
@@ -44,7 +44,7 @@ export default function BudgetsPage() {
     error,
     refetch,
   } = useBudget();
-  const { currency } = useSettings();
+  const currency = useEffectiveCurrency();
   const [month, setMonth] = useState(getCurrentMonthKey());
   const [overallAmount, setOverallAmount] = useState("");
   const [categoryAmounts, setCategoryAmounts] = useState<Record<string, string>>({});

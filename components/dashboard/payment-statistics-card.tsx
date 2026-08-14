@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from "recharts";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import { getSpendingOverTime } from "@/lib/budget-utils";
 
@@ -19,7 +19,7 @@ const EXPENSE_COLOR = "var(--destructive)";
 
 export function PaymentStatisticsCard() {
   const { transactions } = useBudget();
-  const { currency } = useSettings();
+  const currency = useEffectiveCurrency();
   const data = getSpendingOverTime(transactions);
 
   return (

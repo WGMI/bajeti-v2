@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import { getCurrentMonthSummary } from "@/lib/budget-utils";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -95,7 +95,7 @@ function PieSection({
 
 export function EarningSummaryCard() {
   const { transactions } = useBudget();
-  const { currency } = useSettings();
+  const currency = useEffectiveCurrency();
   const monthSummary = getCurrentMonthSummary(transactions);
   const allTimeSummary = getAllTimeSummary(transactions);
   const { dateFrom, dateTo } = getCurrentMonthDateRange();

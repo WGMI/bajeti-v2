@@ -29,8 +29,25 @@ export interface BudgetPlan {
   categoryId?: string;
 }
 
+export interface BajetiGroupScope {
+  id: string;
+  name: string;
+  currency: string;
+  timezone: string;
+  role: string;
+  memberCount: number;
+  pendingInvites: number;
+}
+
 export interface Transaction {
   id: string;
+  userId?: string;
+  groupId?: string | null;
+  addedByUserId?: string | null;
+  addedByName?: string | null;
+  paidByUserId?: string | null;
+  approvedByUserId?: string | null;
+  approvalStatus?: "pending" | "approved" | "rejected";
   amount: number;
   /** Fees/charges stored separately from principal amount (e.g. M-PESA transaction cost). */
   transactionCharges?: number;
@@ -53,6 +70,7 @@ export interface Transaction {
   notes: string;
   /** Original source SMS. Kept separate from user-authored notes. */
   smsMessage?: string | null;
+  attachments?: TransactionAttachment[];
   type: CategoryType;
   transferGroupId?: string | null;
   transferLeg?: TransferLeg | null;
@@ -66,6 +84,17 @@ export interface Transaction {
   status?: "created" | "duplicate";
   /** User-facing note when `status` is `duplicate`. */
   message?: string;
+}
+
+export interface TransactionAttachment {
+  id: string;
+  publicId: string;
+  secureUrl: string;
+  resourceType: string;
+  format?: string | null;
+  originalFilename?: string | null;
+  bytes?: number | null;
+  createdAt: string;
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, "id">[] = [

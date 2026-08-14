@@ -20,7 +20,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { useBudget } from "@/lib/budget-store";
-import type { CategoryType, Transaction } from "@/lib/budget-types";
+import type { CategoryType, Transaction, TransactionAttachment } from "@/lib/budget-types";
 import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
 
 interface TransactionFormDialogProps {
@@ -157,6 +157,40 @@ function TransactionFormFields({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+
+  async function uploadAttachments(transactionId: string): Promise<TransactionAttachment[]> {
+    const uploaded: TransactionAttachment[] = [];
+    for (const file of attachmentFiles) {
+      const formData = new FormData();
+      formData.set("transactionId", transactionId);
+      formData.set("file", file);
+      const res = await fetch("/api/attachments/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          (data && typeof data.error === "string" && data.error) ||
+            `Failed to upload ${file.name}`
+        );
+      }
+      uploaded.push({
+        id: String(data.id),
+        publicId: String(data.public_id),
+        secureUrl: String(data.secure_url),
+        resourceType: String(data.resource_type),
+        format: typeof data.format === "string" ? data.format : null,
+        originalFilename:
+          typeof data.original_filename === "string" ? data.original_filename : file.name,
+        bytes: typeof data.bytes === "number" ? data.bytes : file.size,
+        createdAt: String(data.created_at),
+      });
+    }
+    return uploaded;
+  }
 
   function splitSmsMessages(input: string): string[] {
     const normalized = input.replace(/\r\n/g, "\n").trim();
@@ -328,7 +362,7 @@ function TransactionFormFields({
       }
 
       if (isEdit && editingTransaction) {
-        const updated = await updateTransaction(editingTransaction.id, {
+        let updated = await updateTransaction(editingTransaction.id, {
           amount: num,
           categoryId,
           date,
@@ -340,12 +374,19 @@ function TransactionFormFields({
             ? { fromAccountId, toAccountId }
             : { accountId: accountId || defaultAccount?.id }),
         });
+        if (attachmentFiles.length > 0) {
+          const uploaded = await uploadAttachments(updated.id);
+          updated = {
+            ...updated,
+            attachments: [...uploaded, ...(updated.attachments ?? [])],
+          };
+        }
         onUpdated?.(updated);
         if (updated.transferGroupId) {
           await refetch();
         }
       } else {
-        const created = await addTransaction({
+        let created = await addTransaction({
           amount: num,
           categoryId,
           date,
@@ -363,6 +404,13 @@ function TransactionFormFields({
             created.message ?? "Duplicate SMS ignored: this transaction is already saved."
           );
           return;
+        }
+        if (attachmentFiles.length > 0) {
+          const uploaded = await uploadAttachments(created.id);
+          created = {
+            ...created,
+            attachments: [...uploaded, ...(created.attachments ?? [])],
+          };
         }
         onAdded?.(created);
       }
@@ -749,6 +797,25 @@ function TransactionFormFields({
           </p>
         </div>
       )}
+      <div className="space-y-2">
+        <Label htmlFor="attachments">Attachments</Label>
+        <Input
+          id="attachments"
+          type="file"
+          multiple
+          accept="image/*,application/pdf"
+          onChange={(e) => setAttachmentFiles(Array.from(e.target.files ?? []))}
+        />
+        {attachmentFiles.length > 0 && (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            {attachmentFiles.map((file) => (
+              <p key={`${file.name}-${file.size}`} className="truncate">
+                {file.name}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
       {submitError && (
         <p className="text-sm text-destructive">{submitError}</p>
       )}

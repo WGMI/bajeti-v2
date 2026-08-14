@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { ensureDefaultAccount, rowToAccount } from "@/lib/accounts";
+import { requireBajetiPermission } from "@/lib/bajeti-scope";
 
 export async function PATCH(
   request: Request,
@@ -13,6 +14,7 @@ export async function PATCH(
   }
   const { id } = await params;
   try {
+    const scope = await requireBajetiPermission(userId, request, "manage_categories");
     const body = await request.json();
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
@@ -20,7 +22,11 @@ export async function PATCH(
     }
     const existing = await sql`
       SELECT is_default FROM accounts
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
       LIMIT 1
     `;
     const existingRow = existing[0] as { is_default: boolean } | undefined;
@@ -34,7 +40,11 @@ export async function PATCH(
     const rows = await sql`
       UPDATE accounts
       SET name = ${name}
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
       RETURNING id, name, is_default
     `;
     const row = rows[0] as { id: string; name: string; is_default: boolean } | undefined;
@@ -44,6 +54,9 @@ export async function PATCH(
     return NextResponse.json(rowToAccount(row));
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to update account" }, { status: 500 });
   }
 }
@@ -58,9 +71,14 @@ export async function DELETE(
   }
   const { id } = await params;
   try {
+    const scope = await requireBajetiPermission(userId, _request, "manage_categories");
     const target = await sql`
       SELECT is_default FROM accounts
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
       LIMIT 1
     `;
     const targetRow = target[0] as { is_default: boolean } | undefined;
@@ -71,19 +89,30 @@ export async function DELETE(
       return NextResponse.json({ error: "Cannot delete the default Wallet account" }, { status: 400 });
     }
 
-    const walletId = await ensureDefaultAccount(userId);
+    const walletId = await ensureDefaultAccount(userId, scope.groupId);
     await sql`
       UPDATE transactions
       SET account_id = ${walletId}
-      WHERE user_id = ${userId} AND account_id = ${id}
+      WHERE account_id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
     `;
     await sql`
       DELETE FROM accounts
-      WHERE id = ${id} AND user_id = ${userId}
+      WHERE id = ${id} AND ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
     `;
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
   }
 }

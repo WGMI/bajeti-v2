@@ -10,6 +10,7 @@ import { TransactionSubtitle } from "@/components/dashboard/transaction-subtitle
 import { SortButton } from "@/components/dashboard/sort-button";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatCurrencyWithSign } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
@@ -102,12 +103,15 @@ function transactionFilterParams(filters: TransactionFilters): URLSearchParams {
 
 async function fetchTransactions(
   filters: TransactionFilters,
-  options?: { limit?: number; cursor?: string | null }
+  options?: { limit?: number; cursor?: string | null; groupId?: string | null }
 ): Promise<TransactionsResponse> {
   const params = transactionFilterParams(filters);
   if (options?.limit != null) params.set("limit", String(options.limit));
   if (options?.cursor) params.set("cursor", options.cursor);
-  const res = await fetch(`${API}/transactions?${params}`, { credentials: "same-origin" });
+  const res = await fetch(`${API}/transactions?${params}`, {
+    credentials: "same-origin",
+    headers: options?.groupId ? { "x-bajeti-group-id": options.groupId } : undefined,
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as { error?: string }).error ?? "Failed to load");
@@ -118,20 +122,25 @@ async function fetchTransactions(
 async function fetchTransactionsPage(
   limit: number,
   cursor: string | null,
-  filters: TransactionFilters
+  filters: TransactionFilters,
+  groupId: string | null
 ): Promise<TransactionsResponse> {
-  return fetchTransactions(filters, { limit, cursor: cursor ?? undefined });
+  return fetchTransactions(filters, { limit, cursor: cursor ?? undefined, groupId });
 }
 
 /** All rows for current filters (no limit); used so client-side sort is complete. */
-async function fetchAllTransactions(filters: TransactionFilters): Promise<TransactionsResponse> {
-  return fetchTransactions(filters);
+async function fetchAllTransactions(
+  filters: TransactionFilters,
+  groupId: string | null
+): Promise<TransactionsResponse> {
+  return fetchTransactions(filters, { groupId });
 }
 
 function TransactionsPageContent() {
   const searchParams = useSearchParams();
-  const { accounts, getCategoryById, deleteTransaction } = useBudget();
-  const { currency, dateFormat } = useSettings();
+  const { accounts, getCategoryById, deleteTransaction, selectedGroupId } = useBudget();
+  const { dateFormat } = useSettings();
+  const currency = useEffectiveCurrency();
   const [list, setList] = useState<Transaction[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -233,7 +242,7 @@ function TransactionsPageContent() {
       accountId: accountFilter,
     };
     try {
-      const data = await fetchTransactionsPage(PAGE_SIZE, null, currentFilters);
+      const data = await fetchTransactionsPage(PAGE_SIZE, null, currentFilters, selectedGroupId);
       setList(data.transactions);
       setNextCursor(data.nextCursor);
       setFullTotalIncome(data.totalIncome ?? 0);
@@ -247,7 +256,7 @@ function TransactionsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, dateFrom, dateTo, searchQuery, accountFilter]);
+  }, [typeFilter, dateFrom, dateTo, searchQuery, accountFilter, selectedGroupId]);
 
   const loadMore = useCallback(async () => {
     if (!canAutoLoadMore || !nextCursor || loadingMore) return;
@@ -260,7 +269,12 @@ function TransactionsPageContent() {
       accountId: accountFilter,
     };
     try {
-      const data = await fetchTransactionsPage(PAGE_SIZE, nextCursor, currentFilters);
+      const data = await fetchTransactionsPage(
+        PAGE_SIZE,
+        nextCursor,
+        currentFilters,
+        selectedGroupId
+      );
       setList((prev) => [...prev, ...data.transactions]);
       setNextCursor(data.nextCursor);
       setFullTotalIncome(data.totalIncome ?? 0);
@@ -279,6 +293,7 @@ function TransactionsPageContent() {
     dateTo,
     searchQuery,
     accountFilter,
+    selectedGroupId,
   ]);
 
   const loadAllForSort = useCallback(async () => {
@@ -292,7 +307,7 @@ function TransactionsPageContent() {
       accountId: accountFilter,
     };
     try {
-      const data = await fetchAllTransactions(currentFilters);
+      const data = await fetchAllTransactions(currentFilters, selectedGroupId);
       setList(data.transactions);
       setNextCursor(null);
       setFullTotalIncome(data.totalIncome ?? 0);
@@ -302,7 +317,16 @@ function TransactionsPageContent() {
     } finally {
       setLoadingAllForSort(false);
     }
-  }, [nextCursor, loadingAllForSort, typeFilter, dateFrom, dateTo, searchQuery, accountFilter]);
+  }, [
+    nextCursor,
+    loadingAllForSort,
+    typeFilter,
+    dateFrom,
+    dateTo,
+    searchQuery,
+    accountFilter,
+    selectedGroupId,
+  ]);
 
   useEffect(() => {
     loadFirstPage();
@@ -676,6 +700,7 @@ function TransactionsPageContent() {
                           <TransactionSubtitle
                             transaction={tx}
                             secondary={tx.notes || formatDateWithPreference(tx.date, dateFormat)}
+                            showAddedBy={Boolean(selectedGroupId)}
                           />
                         }
                         dateLabel={formatDateWithPreference(tx.date, dateFormat)}

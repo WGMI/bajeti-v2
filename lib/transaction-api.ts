@@ -6,11 +6,23 @@ import {
   decryptOptionalText,
   decryptText,
 } from "@/lib/text-encryption";
-import type { CategoryType, TransferLeg } from "@/lib/budget-types";
+import type { CategoryType, TransactionAttachment, TransferLeg } from "@/lib/budget-types";
+
+type TransactionApprovalStatus = "pending" | "approved" | "rejected";
+
+function parseApprovalStatus(value: string | null | undefined): TransactionApprovalStatus | undefined {
+  return value === "pending" || value === "approved" || value === "rejected" ? value : undefined;
+}
 
 export type TransactionRow = {
   id: string;
   user_id?: string;
+  group_id?: string | null;
+  added_by_user_id?: string | null;
+  added_by_name?: string | null;
+  paid_by_user_id?: string | null;
+  approved_by_user_id?: string | null;
+  approval_status?: string | null;
   amount_encrypted?: string | null;
   transaction_charges?: string | null;
   transaction_charges_encrypted?: string | null;
@@ -36,6 +48,7 @@ export type TransactionRow = {
   transfer_leg?: string | null;
   counter_account_id?: string | null;
   counter_account_name?: string | null;
+  attachments?: unknown;
 };
 
 export function categoryNameFromRow(row: TransactionRow): string {
@@ -71,8 +84,12 @@ export function transactionCreateResponse(
 
 export function rowToTransaction(row: TransactionRow) {
   const userId = row.user_id ?? "";
-  const notes = decryptText(row.notes, { userId, field: "notes" });
-  const smsMessage = decryptOptionalText(row.sms_message, { userId, field: "sms_message" });
+  const encryptionSubjectId = row.group_id ?? userId;
+  const notes = decryptText(row.notes, { userId: encryptionSubjectId, field: "notes" });
+  const smsMessage = decryptOptionalText(row.sms_message, {
+    userId: encryptionSubjectId,
+    field: "sms_message",
+  });
   const categoryName = categoryNameFromRow(row);
   const transferLeg =
     row.transfer_leg === "out" || row.transfer_leg === "in"
@@ -80,22 +97,32 @@ export function rowToTransaction(row: TransactionRow) {
       : null;
   const originalAmount =
     decryptOptionalNumber(row.original_amount_encrypted, row.original_amount, {
-      userId,
+      userId: encryptionSubjectId,
       field: "original_amount",
     });
   const fxRate = decryptOptionalNumber(row.fx_rate_encrypted, row.fx_rate, {
-    userId,
+    userId: encryptionSubjectId,
     field: "fx_rate",
   });
   const charges = decryptOptionalNumber(
     row.transaction_charges_encrypted,
     row.transaction_charges,
-    { userId, field: "transaction_charges" }
+    { userId: encryptionSubjectId, field: "transaction_charges" }
   );
   return {
     id: row.id,
+    userId,
+    groupId: row.group_id ?? null,
+    addedByUserId: row.added_by_user_id ?? null,
+    addedByName: row.added_by_name ?? null,
+    paidByUserId: row.paid_by_user_id ?? null,
+    approvedByUserId: row.approved_by_user_id ?? null,
+    approvalStatus: parseApprovalStatus(row.approval_status),
     amount: normalizeStoredAmount(
-      decryptNumber(row.amount_encrypted, null, { userId, field: "amount" })
+      decryptNumber(row.amount_encrypted, null, {
+        userId: encryptionSubjectId,
+        field: "amount",
+      })
     ),
     transactionCharges: normalizeStoredAmount(charges ?? 0),
     currency: row.currency ?? null,
@@ -115,6 +142,7 @@ export function rowToTransaction(row: TransactionRow) {
     date: normalizeTransactionDateFromDb(row.date),
     notes,
     smsMessage,
+    attachments: parseAttachments(row.attachments),
     type: row.type as CategoryType,
     transferGroupId: row.transfer_group_id ?? null,
     transferLeg,
@@ -123,4 +151,28 @@ export function rowToTransaction(row: TransactionRow) {
     smsCounterparty: row.sms_counterparty,
     smsCounterpartyKey: row.sms_counterparty_key,
   };
+}
+
+function parseAttachments(value: unknown): TransactionAttachment[] {
+  if (!Array.isArray(value)) return [];
+  const attachments: TransactionAttachment[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const attachment = {
+      id: String(record.id ?? ""),
+      publicId: String(record.public_id ?? ""),
+      secureUrl: String(record.secure_url ?? ""),
+      resourceType: String(record.resource_type ?? ""),
+      format: typeof record.format === "string" ? record.format : null,
+      originalFilename:
+        typeof record.original_filename === "string" ? record.original_filename : null,
+      bytes: typeof record.bytes === "number" ? record.bytes : null,
+      createdAt: String(record.created_at ?? ""),
+    };
+    if (attachment.id && attachment.secureUrl) {
+      attachments.push(attachment);
+    }
+  }
+  return attachments;
 }

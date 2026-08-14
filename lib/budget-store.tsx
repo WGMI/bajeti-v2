@@ -1,14 +1,22 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Account, BudgetPlan, Category, Transaction } from "./budget-types";
+import type { Account, BajetiGroupScope, BudgetPlan, Category, Transaction } from "./budget-types";
 
 const API = "/api";
 
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+async function fetchJson<T>(
+  url: string,
+  options?: RequestInit,
+  groupId?: string | null
+): Promise<T> {
   const res = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(groupId ? { "x-bajeti-group-id": groupId } : {}),
+      ...options?.headers,
+    },
     credentials: "same-origin",
   });
   if (!res.ok) {
@@ -20,6 +28,8 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 interface BudgetState {
   accounts: Account[];
+  groups: BajetiGroupScope[];
+  selectedGroupId: string | null;
   categories: Category[];
   transactions: Transaction[];
   budgetPlans: BudgetPlan[];
@@ -61,6 +71,7 @@ interface BudgetActions {
   upsertBudgetPlan: (plan: Omit<BudgetPlan, "id">) => Promise<BudgetPlan>;
   deleteBudgetPlan: (id: string) => Promise<void>;
   refetch: () => Promise<void>;
+  setSelectedGroupId: (groupId: string | null) => void;
 }
 
 type BudgetContextValue = BudgetState & BudgetActions;
@@ -69,22 +80,44 @@ const BudgetContext = createContext<BudgetContextValue | null>(null);
 
 export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [groups, setGroups] = useState<BajetiGroupScope[]>([]);
+  const [selectedGroupId, setSelectedGroupIdState] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgetPlans, setBudgetPlans] = useState<BudgetPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const stored = window.localStorage.getItem("bajeti:selected-group-id");
+    setSelectedGroupIdState(stored && stored !== "personal" ? stored : null);
+  }, []);
+
+  const setSelectedGroupId = useCallback((groupId: string | null) => {
+    setSelectedGroupIdState(groupId);
+    window.localStorage.setItem("bajeti:selected-group-id", groupId ?? "personal");
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [accts, cats, txRes, budgets] = await Promise.all([
-        fetchJson<Account[]>(`${API}/accounts`),
-        fetchJson<Category[]>(`${API}/categories`),
-        fetchJson<{ transactions: Transaction[]; nextCursor: string | null }>(`${API}/transactions`),
-        fetchJson<BudgetPlan[]>(`${API}/budgets`),
+      const [groupRes, accts, cats, txRes, budgets] = await Promise.all([
+        fetchJson<{ groups: BajetiGroupScope[] }>(`${API}/groups`),
+        fetchJson<Account[]>(`${API}/accounts`, undefined, selectedGroupId),
+        fetchJson<Category[]>(`${API}/categories`, undefined, selectedGroupId),
+        fetchJson<{ transactions: Transaction[]; nextCursor: string | null }>(
+          `${API}/transactions`,
+          undefined,
+          selectedGroupId
+        ),
+        fetchJson<BudgetPlan[]>(`${API}/budgets`, undefined, selectedGroupId),
       ]);
+      setGroups(groupRes.groups);
+      if (selectedGroupId && !groupRes.groups.some((group) => group.id === selectedGroupId)) {
+        setSelectedGroupId(null);
+        return;
+      }
       setAccounts(accts);
       setCategories(cats);
       setTransactions(txRes.transactions);
@@ -98,7 +131,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedGroupId, setSelectedGroupId]);
 
   useEffect(() => {
     fetchData();
@@ -106,12 +139,20 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const addTransaction = useCallback(
     async (tx: Parameters<BudgetActions["addTransaction"]>[0]) => {
-      const created = await fetchJson<Transaction>(`${API}/transactions`, {
-        method: "POST",
-        body: JSON.stringify(tx),
-      });
+      const created = await fetchJson<Transaction>(
+        `${API}/transactions`,
+        {
+          method: "POST",
+          body: JSON.stringify(tx),
+        },
+        selectedGroupId
+      );
       if (created.transferGroupId) {
-        const txRes = await fetchJson<{ transactions: Transaction[] }>(`${API}/transactions`);
+        const txRes = await fetchJson<{ transactions: Transaction[] }>(
+          `${API}/transactions`,
+          undefined,
+          selectedGroupId
+        );
         setTransactions(txRes.transactions);
       } else {
         setTransactions((prev) =>
@@ -120,80 +161,101 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       }
       return created;
     },
-    []
+    [selectedGroupId]
   );
 
   const updateTransaction = useCallback(
     async (id: string, patch: Partial<Transaction>) => {
-      const updated = await fetchJson<Transaction>(`${API}/transactions/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
+      const updated = await fetchJson<Transaction>(
+        `${API}/transactions/${id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+        selectedGroupId
+      );
       setTransactions((prev) =>
         prev.map((t) => (t.id === id ? updated : t))
       );
       return updated;
     },
-    []
+    [selectedGroupId]
   );
 
   const deleteTransaction = useCallback(async (id: string) => {
     const res = await fetchJson<{ ok: boolean; deletedIds?: string[] }>(
       `${API}/transactions/${id}`,
-      { method: "DELETE" }
+      { method: "DELETE" },
+      selectedGroupId
     );
     const ids = new Set(res.deletedIds ?? [id]);
     setTransactions((prev) => prev.filter((t) => !ids.has(t.id)));
-  }, []);
+  }, [selectedGroupId]);
 
   const addAccount = useCallback(async (name: string) => {
-    const created = await fetchJson<Account>(`${API}/accounts`, {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
+    const created = await fetchJson<Account>(
+      `${API}/accounts`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      },
+      selectedGroupId
+    );
     setAccounts((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
     return created;
-  }, []);
+  }, [selectedGroupId]);
 
   const updateAccount = useCallback(async (id: string, name: string) => {
-    const updated = await fetchJson<Account>(`${API}/accounts/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name }),
-    });
+    const updated = await fetchJson<Account>(
+      `${API}/accounts/${id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      },
+      selectedGroupId
+    );
     setAccounts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, ...updated } : a))
     );
     return updated;
-  }, []);
+  }, [selectedGroupId]);
 
   const deleteAccount = useCallback(async (id: string) => {
-    await fetchJson(`${API}/accounts/${id}`, { method: "DELETE" });
+    await fetchJson(`${API}/accounts/${id}`, { method: "DELETE" }, selectedGroupId);
     setAccounts((prev) => prev.filter((a) => a.id !== id));
     await fetchData();
-  }, [fetchData]);
+  }, [fetchData, selectedGroupId]);
 
   const addCategory = useCallback(
     async (cat: Omit<Category, "id">) => {
-      const created = await fetchJson<Category>(`${API}/categories`, {
-        method: "POST",
-        body: JSON.stringify({ ...cat, isDefault: false }),
-      });
+      const created = await fetchJson<Category>(
+        `${API}/categories`,
+        {
+          method: "POST",
+          body: JSON.stringify({ ...cat, isDefault: false }),
+        },
+        selectedGroupId
+      );
       setCategories((prev) => [...prev, created]);
     },
-    []
+    [selectedGroupId]
   );
 
   const updateCategory = useCallback(
     async (id: string, patch: Partial<Pick<Category, "name" | "type">>) => {
-      const updated = await fetchJson<Category>(`${API}/categories/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
+      const updated = await fetchJson<Category>(
+        `${API}/categories/${id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+        selectedGroupId
+      );
       setCategories((prev) =>
         prev.map((c) => (c.id === id ? updated : c))
       );
     },
-    []
+    [selectedGroupId]
   );
 
   const deleteCategory = useCallback(
@@ -205,7 +267,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       if (options && (options.reassignToCategoryId || options.deleteTransactions)) {
         init.body = JSON.stringify(options);
       }
-      await fetchJson(`${API}/categories/${id}`, init);
+      await fetchJson(`${API}/categories/${id}`, init, selectedGroupId);
       setCategories((prev) => prev.filter((c) => c.id !== id));
       if (options) {
         await fetchData();
@@ -214,7 +276,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         setBudgetPlans((prev) => prev.filter((plan) => plan.categoryId !== id));
       }
     },
-    [fetchData]
+    [fetchData, selectedGroupId]
   );
 
   const getCategoryById = useCallback(
@@ -223,10 +285,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const upsertBudgetPlan = useCallback(async (plan: Omit<BudgetPlan, "id">) => {
-    const saved = await fetchJson<BudgetPlan>(`${API}/budgets`, {
-      method: "POST",
-      body: JSON.stringify(plan),
-    });
+    const saved = await fetchJson<BudgetPlan>(
+      `${API}/budgets`,
+      {
+        method: "POST",
+        body: JSON.stringify(plan),
+      },
+      selectedGroupId
+    );
     setBudgetPlans((prev) => {
       const next = prev.filter((existing) => existing.id !== saved.id);
       return [...next, saved].sort((a, b) => {
@@ -236,12 +302,12 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       });
     });
     return saved;
-  }, []);
+  }, [selectedGroupId]);
 
   const deleteBudgetPlan = useCallback(async (id: string) => {
-    await fetchJson(`${API}/budgets/${id}`, { method: "DELETE" });
+    await fetchJson(`${API}/budgets/${id}`, { method: "DELETE" }, selectedGroupId);
     setBudgetPlans((prev) => prev.filter((plan) => plan.id !== id));
-  }, []);
+  }, [selectedGroupId]);
 
   const getAccountById = useCallback(
     (id: string) => accounts.find((a) => a.id === id),
@@ -256,6 +322,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<BudgetContextValue>(
     () => ({
       accounts,
+      groups,
+      selectedGroupId,
       categories,
       transactions,
       budgetPlans,
@@ -276,9 +344,12 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       getAccountById,
       getDefaultAccount,
       refetch: fetchData,
+      setSelectedGroupId,
     }),
     [
       accounts,
+      groups,
+      selectedGroupId,
       categories,
       transactions,
       budgetPlans,
@@ -299,6 +370,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       getAccountById,
       getDefaultAccount,
       fetchData,
+      setSelectedGroupId,
     ]
   );
 

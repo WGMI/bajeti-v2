@@ -10,7 +10,7 @@ import {
   Legend,
 } from "recharts";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import { getExpenseByCategory } from "@/lib/budget-utils";
 import { getCurrentMonthKey } from "@/lib/budget-utils";
@@ -27,7 +27,7 @@ const PIE_COLORS = [
 
 export function ActivityGraphCard() {
   const { transactions, getCategoryById } = useBudget();
-  const { currency } = useSettings();
+  const currency = useEffectiveCurrency();
   const currentMonth = getCurrentMonthKey();
   const thisMonthTx = transactions.filter((t) => t.type === "expense" && getMonthKey(t.date) === currentMonth);
   const categoryNames: Record<string, string> = {};

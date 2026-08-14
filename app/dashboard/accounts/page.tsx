@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import { Pencil, Trash2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,7 +16,7 @@ export default function AccountsPage() {
   const router = useRouter();
   const { accounts, loading, error, refetch, addAccount, updateAccount, deleteAccount } =
     useBudget();
-  const { currency } = useSettings();
+  const currency = useEffectiveCurrency();
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");

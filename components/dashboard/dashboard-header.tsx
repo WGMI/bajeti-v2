@@ -4,6 +4,13 @@ import { useState } from "react";
 import { Menu } from "lucide-react";
 // import { Bell } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
+import { useBudget } from "@/lib/budget-store";
 // import { Button } from "@/components/ui/button";
 // import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -11,6 +18,9 @@ import { SidebarNavContent } from "./dashboard-sidebar";
 
 export function DashboardHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { groups, selectedGroupId, setSelectedGroupId } = useBudget();
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId);
+
   return (
     <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
       <header className="sticky top-0 z-40 border-b bg-background/95 pt-[env(safe-area-inset-top,0px)] backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -19,7 +29,28 @@ export function DashboardHeader() {
             <Menu className="h-5 w-5" />
           </SheetTrigger>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <Select
+              value={selectedGroupId ?? "personal"}
+              onValueChange={(value) => setSelectedGroupId(value === "personal" ? null : value)}
+            >
+              <SelectTrigger
+                aria-label="Bajeti context"
+                className="h-9 w-[min(58vw,16rem)] justify-between md:w-64"
+              >
+                <span className="truncate">
+                  {selectedGroup ? selectedGroup.name : "Personal Bajeti"}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="personal">Personal Bajeti</SelectItem>
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {/* <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
               <Badge

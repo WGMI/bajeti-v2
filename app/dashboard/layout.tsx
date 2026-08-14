@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { FloatingActionButton } from "@/components/dashboard/floating-action-button";
+import { GlobalAssistant } from "@/components/dashboard/global-assistant";
 import { GlobalAddTransactionDialog } from "@/components/dashboard/global-add-transaction-dialog";
 import { GlobalAddCategoryDialog } from "@/components/dashboard/global-add-category-dialog";
 import { GlobalVoiceTransactionDialog } from "@/components/dashboard/global-voice-transaction-dialog";
@@ -25,6 +26,7 @@ export default function DashboardLayout({
           </main>
         </div>
         <Suspense fallback={null}>
+          <GlobalAssistant />
           <FloatingActionButton />
           <GlobalVoiceTransactionDialog />
           <GlobalAddTransactionDialog />

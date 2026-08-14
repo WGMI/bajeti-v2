@@ -8,17 +8,22 @@ import {
 } from "@/lib/text-encryption";
 import type { TransactionRow } from "@/lib/transaction-api";
 
-const categoryNameSubquery = (userId: string) => sql`
-  (SELECT c.name FROM categories c WHERE c.id = category_id AND c.user_id = ${userId}) AS category_name
+const categoryNameSubquery = () => sql`
+  (SELECT c.name FROM categories c WHERE c.id = category_id) AS category_name
 `;
 
-const accountNameSubquery = (userId: string) => sql`
-  (SELECT a.name FROM accounts a WHERE a.id = account_id AND a.user_id = ${userId}) AS account_name
+const accountNameSubquery = () => sql`
+  (SELECT a.name FROM accounts a WHERE a.id = account_id) AS account_name
 `;
 
 export const transferSelectFields = (userId: string) => sql`
   id,
   user_id,
+  group_id,
+  added_by_user_id,
+  paid_by_user_id,
+  approved_by_user_id,
+  approval_status::text AS approval_status,
   amount_encrypted,
   transaction_charges,
   transaction_charges_encrypted,
@@ -40,12 +45,13 @@ export const transferSelectFields = (userId: string) => sql`
   sms_counterparty_key,
   transfer_group_id,
   transfer_leg::text AS transfer_leg,
-  ${categoryNameSubquery(userId)},
-  ${accountNameSubquery(userId)}
+  ${categoryNameSubquery()},
+  ${accountNameSubquery()}
 `;
 
 export async function assertDistinctAccounts(
   userId: string,
+  groupId: string | null,
   fromAccountId: string,
   toAccountId: string
 ): Promise<void> {
@@ -54,7 +60,11 @@ export async function assertDistinctAccounts(
   }
   const rows = await sql`
     SELECT id FROM accounts
-    WHERE user_id = ${userId}
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL`
+    }
       AND id IN (
         SELECT (jsonb_array_elements_text(${JSON.stringify([fromAccountId, toAccountId])}::jsonb))::uuid
       )
@@ -66,6 +76,7 @@ export async function assertDistinctAccounts(
 
 export async function createTransferPair(input: {
   userId: string;
+  groupId?: string | null;
   fromAccountId: string;
   toAccountId: string;
   amount: number;
@@ -75,13 +86,15 @@ export async function createTransferPair(input: {
   smsMessage?: string | null;
   idempotencyKey?: string | null;
 }): Promise<TransactionRow[]> {
-  await assertDistinctAccounts(input.userId, input.fromAccountId, input.toAccountId);
+  const bajetiGroupId = input.groupId ?? null;
+  await assertDistinctAccounts(input.userId, bajetiGroupId, input.fromAccountId, input.toAccountId);
   const numAmount = parseAmountForStorage(input.amount);
   if (numAmount == null) {
     throw new Error("Invalid amount");
   }
 
-  const groupId = randomUUID();
+  const transferGroupId = randomUUID();
+  const encryptionSubjectId = bajetiGroupId ?? input.userId;
   const hashedKey =
     input.idempotencyKey && input.idempotencyKey.trim().length > 0
       ? input.idempotencyKey.trim().slice(0, 255)
@@ -90,6 +103,9 @@ export async function createTransferPair(input: {
   await sql`
     INSERT INTO transactions (
       user_id,
+      group_id,
+      added_by_user_id,
+      paid_by_user_id,
       amount_encrypted,
       transaction_charges,
       transaction_charges_encrypted,
@@ -105,19 +121,25 @@ export async function createTransferPair(input: {
     )
     SELECT
       ${input.userId},
-      ${encryptNumber(numAmount, { userId: input.userId, field: "amount" })},
+      ${bajetiGroupId},
+      ${input.userId},
+      ${input.userId},
+      ${encryptNumber(numAmount, { userId: encryptionSubjectId, field: "amount" })},
       ${null},
       ${encryptNumber(0, {
-        userId: input.userId,
+        userId: encryptionSubjectId,
         field: "transaction_charges",
       })},
       ${input.categoryId},
       leg.account_id,
       ${input.date}::date,
-      ${encryptText(input.notes, { userId: input.userId, field: "notes" })},
-      ${encryptOptionalText(input.smsMessage ?? null, { userId: input.userId, field: "sms_message" })},
+      ${encryptText(input.notes, { userId: encryptionSubjectId, field: "notes" })},
+      ${encryptOptionalText(input.smsMessage ?? null, {
+        userId: encryptionSubjectId,
+        field: "sms_message",
+      })},
       'transfer'::category_type,
-      ${groupId},
+      ${transferGroupId},
       leg.transfer_leg,
       CASE WHEN leg.transfer_leg = 'out' THEN ${hashedKey} ELSE NULL END
     FROM (
@@ -130,7 +152,11 @@ export async function createTransferPair(input: {
   const rows = await sql`
     SELECT ${transferSelectFields(input.userId)}
     FROM transactions
-    WHERE user_id = ${input.userId} AND transfer_group_id = ${groupId}
+    WHERE ${
+      bajetiGroupId
+        ? sql`group_id = ${bajetiGroupId}`
+        : sql`user_id = ${input.userId} AND group_id IS NULL`
+    } AND transfer_group_id = ${transferGroupId}
     ORDER BY transfer_leg DESC
   `;
   return rows as TransactionRow[];
@@ -138,13 +164,18 @@ export async function createTransferPair(input: {
 
 export async function findTransferGroupMate(
   userId: string,
+  groupId: string | null,
   transactionId: string,
   transferGroupId: string
 ): Promise<TransactionRow | null> {
   const rows = await sql`
     SELECT ${transferSelectFields(userId)}
     FROM transactions
-    WHERE user_id = ${userId}
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL`
+    }
       AND transfer_group_id = ${transferGroupId}
       AND id <> ${transactionId}
     LIMIT 1
@@ -152,15 +183,24 @@ export async function findTransferGroupMate(
   return (rows[0] as TransactionRow | undefined) ?? null;
 }
 
-export async function deleteTransferGroup(userId: string, transferGroupId: string): Promise<void> {
+export async function deleteTransferGroup(
+  userId: string,
+  groupId: string | null,
+  transferGroupId: string
+): Promise<void> {
   await sql`
     DELETE FROM transactions
-    WHERE user_id = ${userId} AND transfer_group_id = ${transferGroupId}
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL`
+    } AND transfer_group_id = ${transferGroupId}
   `;
 }
 
 export async function updateTransferPair(input: {
   userId: string;
+  groupId?: string | null;
   transferGroupId: string;
   amount: number;
   categoryId: string;
@@ -170,41 +210,55 @@ export async function updateTransferPair(input: {
   fromAccountId: string;
   toAccountId: string;
 }): Promise<TransactionRow[]> {
-  await assertDistinctAccounts(input.userId, input.fromAccountId, input.toAccountId);
+  const bajetiGroupId = input.groupId ?? null;
+  await assertDistinctAccounts(input.userId, bajetiGroupId, input.fromAccountId, input.toAccountId);
   const numAmount = parseAmountForStorage(input.amount);
   if (numAmount == null) {
     throw new Error("Invalid amount");
   }
 
+  const encryptionSubjectId = bajetiGroupId ?? input.userId;
+
   await sql`
     UPDATE transactions
     SET
       amount_encrypted = ${encryptNumber(numAmount, {
-        userId: input.userId,
+        userId: encryptionSubjectId,
         field: "amount",
       })},
       transaction_charges = NULL,
       transaction_charges_encrypted = ${encryptNumber(0, {
-        userId: input.userId,
+        userId: encryptionSubjectId,
         field: "transaction_charges",
       })},
       category_id = ${input.categoryId},
       date = ${input.date}::date,
-      notes = ${encryptText(input.notes, { userId: input.userId, field: "notes" })},
-      sms_message = COALESCE(${encryptOptionalText(input.smsMessage ?? null, { userId: input.userId, field: "sms_message" })}, sms_message),
+      notes = ${encryptText(input.notes, { userId: encryptionSubjectId, field: "notes" })},
+      sms_message = COALESCE(${encryptOptionalText(input.smsMessage ?? null, {
+        userId: encryptionSubjectId,
+        field: "sms_message",
+      })}, sms_message),
       account_id = CASE transfer_leg
         WHEN 'out' THEN ${input.fromAccountId}::uuid
         WHEN 'in' THEN ${input.toAccountId}::uuid
         ELSE account_id
       END
-    WHERE user_id = ${input.userId}
+    WHERE ${
+      bajetiGroupId
+        ? sql`group_id = ${bajetiGroupId}`
+        : sql`user_id = ${input.userId} AND group_id IS NULL`
+    }
       AND transfer_group_id = ${input.transferGroupId}
   `;
 
   const rows = await sql`
     SELECT ${transferSelectFields(input.userId)}
     FROM transactions
-    WHERE user_id = ${input.userId}
+    WHERE ${
+      bajetiGroupId
+        ? sql`group_id = ${bajetiGroupId}`
+        : sql`user_id = ${input.userId} AND group_id IS NULL`
+    }
       AND transfer_group_id = ${input.transferGroupId}
     ORDER BY transfer_leg DESC
   `;

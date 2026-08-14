@@ -10,9 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Trash2, Loader2, Tags } from "lucide-react";
+import { ExternalLink, FileText, Loader2, Pencil, Tags, Trash2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrencyWithSign, formatCurrency } from "@/lib/format-currency";
 import { formatDateWithPreference } from "@/lib/format-date";
 import type { Transaction } from "@/lib/budget-types";
@@ -37,7 +38,8 @@ export function TransactionDetailDialog({
   onDeleted,
 }: TransactionDetailDialogProps) {
   const { getCategoryById, deleteTransaction } = useBudget();
-  const { currency, dateFormat } = useSettings();
+  const { dateFormat } = useSettings();
+  const currency = useEffectiveCurrency();
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
@@ -188,6 +190,17 @@ export function TransactionDetailDialog({
                   : "Expense"}
             </Badge>
           </div>
+          {transaction.groupId && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-muted-foreground">Added by</span>
+              <span className="min-w-0 truncate text-right font-medium">
+                {transaction.addedByName ??
+                  transaction.addedByUserId ??
+                  transaction.userId ??
+                  "Unknown member"}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-muted-foreground">Date</span>
             <span className="font-medium">
@@ -208,6 +221,28 @@ export function TransactionDetailDialog({
               <p className="whitespace-pre-wrap rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 {transaction.smsMessage}
               </p>
+            </div>
+          )}
+          {(transaction.attachments?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-muted-foreground">Attachments</span>
+              <div className="space-y-2">
+                {transaction.attachments?.map((attachment) => (
+                  <a
+                    key={attachment.id}
+                    href={attachment.secureUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex min-w-0 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {attachment.originalFilename ?? attachment.publicId}
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  </a>
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import { getBajetiScope } from "@/lib/bajeti-scope";
 import { decryptNumber, decryptOptionalNumber } from "@/lib/text-encryption";
 
 type Summary = {
@@ -68,6 +69,7 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
+    const scope = await getBajetiScope(userId, request);
     const month = searchParams.get("month") ?? getCurrentMonth();
     if (!isValidMonth(month)) {
       return NextResponse.json({ error: "Invalid month. Use YYYY-MM." }, { status: 400 });
@@ -94,8 +96,12 @@ export async function GET(request: Request) {
         t.category_id,
         COALESCE(c.name, 'Unknown') AS category_name
       FROM transactions t
-      LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = ${userId}
-      WHERE t.user_id = ${userId}
+      LEFT JOIN categories c ON c.id = t.category_id
+      WHERE ${
+        scope.groupId
+          ? sql`t.group_id = ${scope.groupId}`
+          : sql`t.user_id = ${userId} AND t.group_id IS NULL`
+      }
     `) as SummaryTransactionRow[];
 
     const current = emptySummary();
@@ -113,15 +119,19 @@ export async function GET(request: Request) {
     >();
 
     for (const row of rows) {
+      const encryptionSubjectId = scope.groupId ?? userId;
       const amount = Math.abs(
-        decryptNumber(row.amount_encrypted, null, { userId, field: "amount" })
+        decryptNumber(row.amount_encrypted, null, {
+          userId: encryptionSubjectId,
+          field: "amount",
+        })
       );
       const charges = Math.max(
         0,
         decryptOptionalNumber(
           row.transaction_charges_encrypted,
           row.transaction_charges,
-          { userId, field: "transaction_charges" }
+          { userId: encryptionSubjectId, field: "transaction_charges" }
         ) ?? 0
       );
       addTransaction(allTime, row.type, amount, charges);
@@ -166,6 +176,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error(error);
+    if (error instanceof Error && error.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to fetch summary" }, { status: 500 });
   }
 }

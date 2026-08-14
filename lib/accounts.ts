@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { getGroupMembership } from "@/lib/groups";
 import { decryptNumber, decryptOptionalNumber } from "@/lib/text-encryption";
 
 export const DEFAULT_ACCOUNT_NAME = "Wallet";
@@ -18,18 +19,29 @@ export function rowToAccount(row: AccountRow) {
 }
 
 /** Ensures the user has a default Wallet account; returns its id. */
-export async function ensureDefaultAccount(userId: string): Promise<string> {
+export async function ensureDefaultAccount(
+  userId: string,
+  groupId: string | null = null
+): Promise<string> {
+  if (groupId) {
+    const membership = await getGroupMembership(userId, groupId);
+    if (!membership) throw new Error("Forbidden");
+  }
   const existing = await sql`
     SELECT id FROM accounts
-    WHERE user_id = ${userId} AND is_default = true
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL AND is_default = true`
+    }
     LIMIT 1
   `;
   const row = existing[0] as { id: string } | undefined;
   if (row) return row.id;
 
   const inserted = await sql`
-    INSERT INTO accounts (user_id, name, is_default)
-    VALUES (${userId}, ${DEFAULT_ACCOUNT_NAME}, true)
+    INSERT INTO accounts (user_id, group_id, name, is_default)
+    VALUES (${userId}, ${groupId}, ${DEFAULT_ACCOUNT_NAME}, true)
     ON CONFLICT DO NOTHING
     RETURNING id
   `;
@@ -38,7 +50,11 @@ export async function ensureDefaultAccount(userId: string): Promise<string> {
 
   const fallback = await sql`
     SELECT id FROM accounts
-    WHERE user_id = ${userId} AND is_default = true
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL AND is_default = true`
+    }
     LIMIT 1
   `;
   const fallbackRow = fallback[0] as { id: string } | undefined;
@@ -50,25 +66,34 @@ export async function ensureDefaultAccount(userId: string): Promise<string> {
 
 export async function resolveAccountId(
   userId: string,
-  accountId: string | null | undefined
+  accountId: string | null | undefined,
+  groupId: string | null = null
 ): Promise<string> {
   if (accountId) {
     const rows = await sql`
       SELECT id FROM accounts
-      WHERE user_id = ${userId} AND id = ${accountId}
+      WHERE id = ${accountId} AND ${
+        groupId
+          ? sql`group_id = ${groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
       LIMIT 1
     `;
     if (rows[0]) return accountId;
   }
-  return ensureDefaultAccount(userId);
+  return ensureDefaultAccount(userId, groupId);
 }
 
-export async function listAccountsForUser(userId: string) {
-  await ensureDefaultAccount(userId);
+export async function listAccountsForUser(userId: string, groupId: string | null = null) {
+  await ensureDefaultAccount(userId, groupId);
   const accounts = (await sql`
     SELECT id, name, is_default
     FROM accounts
-    WHERE user_id = ${userId}
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL`
+    }
     ORDER BY is_default DESC, name ASC
   `) as AccountRow[];
   const transactions = (await sql`
@@ -80,7 +105,11 @@ export async function listAccountsForUser(userId: string) {
       type::text AS type,
       transfer_leg::text AS transfer_leg
     FROM transactions
-    WHERE user_id = ${userId}
+    WHERE ${
+      groupId
+        ? sql`group_id = ${groupId}`
+        : sql`user_id = ${userId} AND group_id IS NULL`
+    }
   `) as {
     account_id: string;
     amount_encrypted: string | null;
@@ -92,9 +121,10 @@ export async function listAccountsForUser(userId: string) {
   const totals = new Map<string, { balance: number; totalIn: number; totalOut: number }>();
 
   for (const transaction of transactions) {
+    const encryptionSubjectId = groupId ?? userId;
     const amount = Math.abs(
       decryptNumber(transaction.amount_encrypted, null, {
-        userId,
+        userId: encryptionSubjectId,
         field: "amount",
       })
     );
@@ -103,7 +133,7 @@ export async function listAccountsForUser(userId: string) {
       decryptOptionalNumber(
         transaction.transaction_charges_encrypted,
         transaction.transaction_charges,
-        { userId, field: "transaction_charges" }
+        { userId: encryptionSubjectId, field: "transaction_charges" }
       ) ?? 0
     );
     const total = totals.get(transaction.account_id) ?? {

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import {
+  ensureDefaultCategoriesForScope,
+  getBajetiScope,
+  requireBajetiPermission,
+} from "@/lib/bajeti-scope";
 import { DEFAULT_CATEGORIES } from "@/lib/budget-types";
 import type { CategoryType } from "@/lib/budget-types";
 
@@ -15,16 +20,22 @@ function rowToCategory(row: CategoryRow) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
+    const scope = await getBajetiScope(userId, request);
+    await ensureDefaultCategoriesForScope(userId, scope.groupId);
     let rows = await sql`
       SELECT id, name, type, is_default
       FROM categories
-      WHERE user_id = ${userId}
+      WHERE ${
+        scope.groupId
+          ? sql`group_id = ${scope.groupId}`
+          : sql`user_id = ${userId} AND group_id IS NULL`
+      }
       ORDER BY type, name
     `;
     if (rows.length === 0) {
@@ -37,7 +48,11 @@ export async function GET() {
       rows = await sql`
         SELECT id, name, type, is_default
         FROM categories
-        WHERE user_id = ${userId}
+        WHERE ${
+          scope.groupId
+            ? sql`group_id = ${scope.groupId}`
+            : sql`user_id = ${userId} AND group_id IS NULL`
+        }
         ORDER BY type, name
       `;
     }
@@ -54,14 +69,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
+    const scope = await requireBajetiPermission(userId, request, "manage_categories");
     const body = await request.json();
     const { name, type, isDefault = false } = body;
     if (!name || !type || !["income", "expense", "transfer"].includes(type)) {
       return NextResponse.json({ error: "Invalid name or type" }, { status: 400 });
     }
     const rows = await sql`
-      INSERT INTO categories (user_id, name, type, is_default)
-      VALUES (${userId}, ${name.trim()}, ${type}::category_type, ${isDefault})
+      INSERT INTO categories (user_id, group_id, name, type, is_default)
+      VALUES (${userId}, ${scope.groupId}, ${name.trim()}, ${type}::category_type, ${isDefault})
       RETURNING id, name, type, is_default
     `;
     const row = rows[0] as CategoryRow | undefined;
@@ -69,6 +85,9 @@ export async function POST(request: Request) {
     return NextResponse.json(rowToCategory(row));
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to create category" }, { status: 500 });
   }
 }

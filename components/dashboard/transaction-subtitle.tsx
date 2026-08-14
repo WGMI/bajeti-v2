@@ -8,6 +8,7 @@ type TransactionSubtitleProps = {
   transaction: Transaction;
   /** Shown after account when not a transfer (e.g. notes or formatted date). */
   secondary?: string;
+  showAddedBy?: boolean;
 };
 
 function AccountLabel({ name, className }: { name: string; className?: string }) {
@@ -19,8 +20,19 @@ function AccountLabel({ name, className }: { name: string; className?: string })
   );
 }
 
-export function TransactionSubtitle({ transaction, secondary }: TransactionSubtitleProps) {
+function memberLabel(userId: string | null | undefined) {
+  return userId || "Unknown member";
+}
+
+export function TransactionSubtitle({
+  transaction,
+  secondary,
+  showAddedBy = false,
+}: TransactionSubtitleProps) {
   const accountLabel = transaction.accountName ?? "Account";
+  const addedBy = showAddedBy
+    ? `Added by ${memberLabel(transaction.addedByName ?? transaction.addedByUserId ?? transaction.userId)}`
+    : null;
 
   if (transaction.type === "transfer" && transaction.counterAccountName) {
     return (
@@ -33,11 +45,16 @@ export function TransactionSubtitle({ transaction, secondary }: TransactionSubti
           name={transaction.counterAccountName}
           className="max-w-[min(100%,9rem)] shrink-0"
         />
+        {addedBy ? (
+          <span className="min-w-0 truncate text-muted-foreground">· {addedBy}</span>
+        ) : null}
       </span>
     );
   }
 
-  const tail = secondary ?? (transaction.notes || transaction.date);
+  const tail = [secondary ?? (transaction.notes || transaction.date), addedBy]
+    .filter(Boolean)
+    .join(" · ");
   if (!transaction.accountName && !tail) return null;
 
   return (

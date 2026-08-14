@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
+import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import {
   getCategoryBudgetUsages,
@@ -41,7 +41,7 @@ function writeSentNotifications(sent: Set<string>) {
 
 export function BudgetDashboardCard() {
   const { budgetPlans, categories, transactions } = useBudget();
-  const { currency } = useSettings();
+  const currency = useEffectiveCurrency();
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | "unsupported"
   >(
