@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,61 @@ interface TransactionFormDialogProps {
   onAdded?: (transaction: Transaction) => void;
   /** Called after a transaction is updated (e.g. to update item in a local list) */
   onUpdated?: (transaction: Transaction) => void;
+}
+
+function AttachmentFilePreview({ file }: { file: File }) {
+  const url = useMemo(() => (file.type.startsWith("image/") ? URL.createObjectURL(file) : null), [file]);
+
+  useEffect(() => {
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [url]);
+
+  if (!url) {
+    return (
+      <div className="flex h-20 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+        <span className="sr-only">{file.name}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-muted/30">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt={file.name} className="max-h-56 w-full object-cover" />
+    </div>
+  );
+}
+
+function AttachmentStoredPreview({ attachment }: { attachment: TransactionAttachment }) {
+  const filename = (attachment.originalFilename ?? attachment.publicId ?? "").toLowerCase();
+  const isImage =
+    attachment.resourceType === "image" ||
+    filename.endsWith(".jpg") ||
+    filename.endsWith(".jpeg") ||
+    filename.endsWith(".png") ||
+    filename.endsWith(".webp") ||
+    filename.endsWith(".gif");
+
+  if (!isImage) {
+    return (
+      <div className="flex h-20 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+        <span className="sr-only">{attachment.originalFilename ?? attachment.publicId}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-muted/30">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={attachment.secureUrl}
+        alt={attachment.originalFilename ?? attachment.publicId}
+        className="max-h-56 w-full object-cover"
+      />
+    </div>
+  );
 }
 
 function getInitialValues(
@@ -804,14 +859,26 @@ function TransactionFormFields({
           type="file"
           multiple
           accept="image/*,application/pdf"
+          className="sr-only"
           onChange={(e) => setAttachmentFiles(Array.from(e.target.files ?? []))}
         />
+        <Label
+          htmlFor="attachments"
+          className="inline-flex h-10 cursor-pointer items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
+        >
+          Choose files
+        </Label>
+        {editingTransaction?.attachments && editingTransaction.attachments.length > 0 && (
+          <div className="space-y-2">
+            {editingTransaction.attachments.map((attachment) => (
+              <AttachmentStoredPreview key={attachment.id} attachment={attachment} />
+            ))}
+          </div>
+        )}
         {attachmentFiles.length > 0 && (
-          <div className="space-y-1 text-xs text-muted-foreground">
+          <div className="space-y-2 text-xs text-muted-foreground">
             {attachmentFiles.map((file) => (
-              <p key={`${file.name}-${file.size}`} className="truncate">
-                {file.name}
-              </p>
+              <AttachmentFilePreview key={`${file.name}-${file.size}`} file={file} />
             ))}
           </div>
         )}

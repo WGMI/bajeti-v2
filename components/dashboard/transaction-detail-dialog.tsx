@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, FileText, Loader2, Pencil, Tags, Trash2 } from "lucide-react";
+import { FileText, Loader2, Pencil, Tags, Trash2 } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useSettings } from "@/lib/settings-store";
 import { useEffectiveCurrency } from "@/lib/use-effective-currency";
@@ -85,6 +85,18 @@ export function TransactionDetailDialog({
   };
 
   if (!transaction) return null;
+
+  function isImageAttachment(attachment: NonNullable<Transaction["attachments"]>[number]) {
+    const filename = (attachment.originalFilename ?? attachment.publicId ?? "").toLowerCase();
+    return (
+      attachment.resourceType === "image" ||
+      filename.endsWith(".jpg") ||
+      filename.endsWith(".jpeg") ||
+      filename.endsWith(".png") ||
+      filename.endsWith(".webp") ||
+      filename.endsWith(".gif")
+    );
+  }
 
   return (
     <>
@@ -227,21 +239,35 @@ export function TransactionDetailDialog({
             <div className="flex flex-col gap-2">
               <span className="text-sm text-muted-foreground">Attachments</span>
               <div className="space-y-2">
-                {transaction.attachments?.map((attachment) => (
-                  <a
-                    key={attachment.id}
-                    href={attachment.secureUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex min-w-0 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm hover:bg-muted"
-                  >
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {attachment.originalFilename ?? attachment.publicId}
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  </a>
-                ))}
+                {transaction.attachments?.map((attachment) =>
+                  isImageAttachment(attachment) ? (
+                    <a
+                      key={attachment.id}
+                      href={attachment.secureUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block overflow-hidden rounded-md border bg-muted/30 hover:bg-muted"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={attachment.secureUrl}
+                        alt={attachment.originalFilename ?? attachment.publicId}
+                        className="max-h-72 w-full object-cover"
+                      />
+                    </a>
+                  ) : (
+                    <a
+                      key={attachment.id}
+                      href={attachment.secureUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-20 items-center justify-center rounded-md border bg-muted/30 hover:bg-muted"
+                    >
+                      <FileText className="h-6 w-6 text-muted-foreground" />
+                      <span className="sr-only">{attachment.originalFilename ?? attachment.publicId}</span>
+                    </a>
+                  )
+                )}
               </div>
             </div>
           )}
