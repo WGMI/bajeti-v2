@@ -81,7 +81,7 @@ export async function GET(request: Request) {
       : 6;
     const { startDate, endDateExclusive } = monthBounds(month);
     const [year, monthPart] = month.split("-").map(Number);
-    const trendMonthsList = Array.from({ length: trendMonths + 1 }, (_, index) => {
+    const trendMonthsList = Array.from({ length: trendMonths }, (_, index) => {
       const date = new Date(Date.UTC(year, monthPart - trendMonths + index, 1));
       return date.toISOString().slice(0, 7);
     });

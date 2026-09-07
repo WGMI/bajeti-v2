@@ -2,8 +2,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { ArrowRight, PiggyBank, TrendingUp, Shield, PieChart } from "lucide-react";
+import { ArrowRight, PiggyBank, MessageSquare, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SmsParseDemo } from "@/components/landing/sms-parse-demo";
 import { cn } from "@/lib/utils";
 
 export default async function LandingPage() {
@@ -48,27 +49,38 @@ export default async function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="container px-4 py-16 sm:px-6 sm:py-24 md:py-32">
-        <div className="mx-auto max-w-3xl text-center">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-            Take control of your money with{" "}
-            <span className="bg-gradient-to-r from-primary to-chart-2 bg-clip-text text-transparent">simple budgeting</span>
-          </h1>
-          <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
-            Track spending, set goals, and see where your money goes—all in one
-            clean dashboard. No spreadsheets, no hassle.
-          </p>
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link href="/dashboard">
-              <Button size="lg" className="w-full rounded-full px-8 sm:w-auto">
-                Open dashboard
-                <ArrowRight className="ml-2 h-4 w-4" />
+      <section className="container px-4 py-16 sm:px-6 sm:py-24 md:py-28">
+        <div className="mx-auto grid max-w-5xl gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:gap-8">
+          <div className="text-center lg:text-left">
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+              The budget app that reads your{" "}
+              <span className="bg-gradient-to-r from-primary to-chart-2 bg-clip-text text-transparent">
+                M-Pesa messages
+              </span>{" "}
+              for you
+            </h1>
+            <p className="mt-6 text-lg text-muted-foreground">
+              Every M-Pesa and bank SMS becomes a categorized transaction the moment it
+              arrives — no manual entry, no spreadsheets. That&apos;s not a screenshot on
+              the right, it&apos;s Bajeti&apos;s real parser. Try it.
+            </p>
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
+              <Link href="/dashboard">
+                <Button size="lg" className="w-full rounded-full px-8 sm:w-auto">
+                  Get started
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Button variant="outline" size="lg" className="w-full rounded-full px-8 sm:w-auto" asChild>
+                <Link href="#features">See what else it does</Link>
               </Button>
-            </Link>
-            <Button variant="outline" size="lg" className="w-full rounded-full px-8 sm:w-auto" asChild>
-              <Link href="#features">See features</Link>
-            </Button>
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              We&apos;re onboarding a small first group of users while we polish Bajeti —
+              expect the occasional rough edge.
+            </p>
           </div>
+          <SmsParseDemo />
         </div>
       </section>
 
@@ -79,33 +91,33 @@ export default async function LandingPage() {
       >
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Everything you need to stay on budget
+            Beyond manual entry
           </h2>
           <p className="mt-4 text-muted-foreground">
-            A single place to view earnings, spending, and goals.
+            The parts of Bajeti a spreadsheet, or a typical budgeting app, can&apos;t do.
           </p>
         </div>
         <div className="mx-auto mt-12 grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[
             {
-              icon: PieChart,
-              title: "Earning & spending summary",
+              icon: MessageSquare,
+              title: "SMS auto-import",
               description:
-                "See your balance, savings rate, and earning vs spending at a glance.",
+                "M-Pesa and bank messages turn into categorized transactions automatically, in the background, the moment they land.",
               color: "bg-chart-1/15 text-chart-1",
             },
             {
-              icon: TrendingUp,
-              title: "Payment statistics",
+              icon: Sparkles,
+              title: "Ask your budget a question",
               description:
-                "Track weekly and monthly trends with clear, simple charts.",
+                "Speak a transaction out loud, or ask “how much did I spend on transport this month” and get a real answer, not a chart to squint at.",
               color: "bg-chart-2/15 text-chart-2",
             },
             {
-              icon: Shield,
-              title: "Goals & budgets",
+              icon: Users,
+              title: "Shared budgets",
               description:
-                "Set goals for bills, travel, shopping, and daily expenses with progress bars.",
+                "Invite a partner, roommate, or family member into a group budget you both can see and add to.",
               color: "bg-chart-5/15 text-chart-5",
             },
           ].map((item) => (
@@ -131,11 +143,12 @@ export default async function LandingPage() {
       <section className="container px-4 py-16 sm:px-6 sm:py-24">
         <div className="mx-auto max-w-2xl rounded-3xl border border-primary/10 bg-card p-8 text-center shadow-sm sm:p-12">
           <h2 className="text-2xl font-bold sm:text-3xl">
-            Ready to manage your budget?
+            Ready to stop typing in your own transactions?
           </h2>
           <p className="mt-4 text-muted-foreground">
-            Create your private account and start tracking your money in under
-            a minute.
+            Create your private account and start tracking your money in under a
+            minute. We&apos;re a small, early product right now — reach out any time
+            something doesn&apos;t make sense.
           </p>
           <Link href="/dashboard" className="mt-6 inline-block">
             <Button size="lg" className="rounded-full px-8">

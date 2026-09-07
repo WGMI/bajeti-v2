@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { listAccountsForUser, rowToAccount } from "@/lib/accounts";
 import { DEFAULT_CATEGORIES, type Category, type CategoryType } from "@/lib/budget-types";
 import { parseVoiceTransaction } from "@/lib/voice-transaction-parser";
+import { captureRouteError } from "@/lib/monitoring";
 
 type CategoryRow = {
   id: string;
@@ -87,6 +88,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("[POST /api/voice/preview]", error);
+    captureRouteError(error, "POST /api/voice/preview", { feature: "voice_transaction" });
     return NextResponse.json({ error: "Failed to preview voice transaction" }, { status: 500 });
   }
 }

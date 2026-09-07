@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -8,6 +11,14 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useSettings, CURRENCY_OPTIONS } from "@/lib/settings-store";
 import type {
   CurrencyCode,
@@ -15,9 +26,10 @@ import type {
   FirstDayOfWeek,
   SmsTransactionDateSource,
 } from "@/lib/settings-store";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Loader2, Settings as SettingsIcon, Trash2 } from "lucide-react";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const {
     currency,
     dateFormat,
@@ -28,8 +40,42 @@ export default function SettingsPage() {
     setFirstDayOfWeek,
     setSmsTransactionDateSource,
   } = useSettings();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function deleteAccount() {
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/account", {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          (data && typeof data.error === "string" && data.error) ||
+            "We could not delete your account. Please try again."
+        );
+      }
+      try {
+        window.localStorage.removeItem("bajeti-settings");
+        window.localStorage.removeItem("bajeti:selected-group-id");
+      } catch {
+        // The server-side deletion is authoritative.
+      }
+      router.replace("/");
+      router.refresh();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "We could not delete your account.");
+    } finally {
+      setDeletingAccount(false);
+    }
+  }
 
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -155,6 +201,66 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card className="border-destructive/30 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base font-medium text-destructive">Account deletion</CardTitle>
+          <p className="text-sm text-muted-foreground font-normal">
+            Permanently remove your Bajeti account, financial data, imports, groups you own, and
+            preferences.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => {
+              setDeleteError(null);
+              setDeleteDialogOpen(true);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete account and data
+          </Button>
+        </CardContent>
+      </Card>
     </div>
+
+    <Dialog open={deleteDialogOpen} onOpenChange={(open) => !deletingAccount && setDeleteDialogOpen(open)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete account and data?</DialogTitle>
+          <DialogDescription>
+            This permanently deletes your Bajeti account, transactions, imported SMS data,
+            categories, accounts, rules, groups you own, and preferences. This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        {deleteError && (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {deleteError}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={deletingAccount}
+            onClick={() => setDeleteDialogOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={deletingAccount}
+            onClick={deleteAccount}
+          >
+            {deletingAccount ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {deletingAccount ? "Deleting..." : "Permanently delete"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

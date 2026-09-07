@@ -10,10 +10,17 @@ export async function DELETE() {
 
   try {
     await sql.transaction((tx) => [
+      tx`DELETE FROM transaction_comments WHERE user_id = ${userId}`,
+      tx`DELETE FROM transaction_attachments WHERE uploaded_by_user_id = ${userId}`,
       tx`DELETE FROM counterparty_category_rules WHERE user_id = ${userId}`,
+      tx`DELETE FROM budget_plans WHERE user_id = ${userId}`,
       tx`DELETE FROM transactions WHERE user_id = ${userId}`,
       tx`DELETE FROM categories WHERE user_id = ${userId}`,
       tx`DELETE FROM accounts WHERE user_id = ${userId}`,
+      tx`DELETE FROM group_invites WHERE invited_by_user_id = ${userId}`,
+      tx`DELETE FROM group_audit_events WHERE actor_user_id = ${userId}`,
+      tx`DELETE FROM group_members WHERE user_id = ${userId}`,
+      tx`DELETE FROM groups WHERE owner_user_id = ${userId}`,
       tx`DELETE FROM user_mobile_settings WHERE user_id = ${userId}`,
       tx`DELETE FROM user_settings WHERE user_id = ${userId}`,
     ]);

@@ -14,6 +14,7 @@ import { resolveAccountId } from "@/lib/accounts";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 import { rowToTransaction, type TransactionRow } from "@/lib/transaction-api";
 import { keyedFingerprint } from "@/lib/text-encryption";
+import { captureRouteError } from "@/lib/monitoring";
 
 type CategoryRow = { id: string; name: string; type: string };
 async function resolveEffectiveTransactionType(
@@ -294,6 +295,7 @@ export async function POST(request: Request) {
     });
   } catch (e) {
     console.error("[POST /api/sms]", e);
+    captureRouteError(e, "POST /api/sms", { feature: "sms_ingestion" });
     return NextResponse.json(
       { error: "Failed to process SMS" },
       { status: 500 }

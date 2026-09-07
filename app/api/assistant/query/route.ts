@@ -10,6 +10,7 @@ import {
   transactionAmountForMetric,
   type AssistantQueryIntent,
 } from "@/lib/assistant-query";
+import { captureRouteError, captureRouteMessage } from "@/lib/monitoring";
 
 type CategoryRow = {
   id: string;
@@ -177,6 +178,10 @@ async function parseIntentWithOpenAI(
 
   if (!res.ok) {
     console.error("OpenAI intent parse failed", await res.text().catch(() => res.statusText));
+    captureRouteMessage("OpenAI intent parse failed", "POST /api/assistant/query", {
+      feature: "assistant_intent_parse",
+      status: res.status,
+    });
     return null;
   }
   const text = extractResponseText(await res.json().catch(() => null));
@@ -598,6 +603,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(error);
+    captureRouteError(error, "POST /api/assistant/query", { feature: "assistant_query" });
     return NextResponse.json({ error: "Assistant could not answer that yet." }, { status: 500 });
   }
 }

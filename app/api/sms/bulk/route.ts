@@ -14,6 +14,7 @@ import { rowToTransaction } from "@/lib/transaction-api";
 import { resolveAccountId } from "@/lib/accounts";
 import { insertSmsTransaction } from "@/lib/sms-transaction-insert";
 import { keyedFingerprint } from "@/lib/text-encryption";
+import { captureRouteError, captureRouteMessage } from "@/lib/monitoring";
 
 type CategoryRow = { id: string; name: string; type: string };
 function sha256(input: string): string {
@@ -343,6 +344,11 @@ export async function POST(request: Request) {
           transaction: created,
         });
       } catch (e) {
+        captureRouteError(e, "POST /api/sms/bulk", {
+          feature: "sms_bulk_item",
+          itemIndex: i,
+          batchSize: messages.length,
+        });
         results.push({
           index: i,
           status: "failed",
@@ -363,9 +369,21 @@ export async function POST(request: Request) {
       { created: 0, duplicates: 0, ignored: 0, failed: 0 }
     );
 
+    if (summary.failed > 0) {
+      captureRouteMessage("Bulk SMS import had failed items", "POST /api/sms/bulk", {
+        feature: "sms_bulk_import",
+        batchSize: messages.length,
+        failed: summary.failed,
+        created: summary.created,
+        duplicates: summary.duplicates,
+        ignored: summary.ignored,
+      });
+    }
+
     return apiJson({ summary, results });
   } catch (e) {
     console.error("[POST /api/sms/bulk]", e);
+    captureRouteError(e, "POST /api/sms/bulk", { feature: "sms_bulk_import" });
     return apiJson({ error: "Failed to process bulk SMS" }, { status: 500 });
   }
 }
