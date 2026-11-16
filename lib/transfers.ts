@@ -85,6 +85,7 @@ export async function createTransferPair(input: {
   notes: string;
   smsMessage?: string | null;
   idempotencyKey?: string | null;
+  smsRawHash?: string | null;
 }): Promise<TransactionRow[]> {
   const bajetiGroupId = input.groupId ?? null;
   await assertDistinctAccounts(input.userId, bajetiGroupId, input.fromAccountId, input.toAccountId);
@@ -117,7 +118,8 @@ export async function createTransferPair(input: {
       type,
       transfer_group_id,
       transfer_leg,
-      sms_idempotency_key
+      sms_idempotency_key,
+      sms_raw_hash
     )
     SELECT
       ${input.userId},
@@ -141,7 +143,8 @@ export async function createTransferPair(input: {
       'transfer'::category_type,
       ${transferGroupId},
       leg.transfer_leg,
-      CASE WHEN leg.transfer_leg = 'out' THEN ${hashedKey} ELSE NULL END
+      CASE WHEN leg.transfer_leg = 'out' THEN ${hashedKey} ELSE NULL END,
+      CASE WHEN leg.transfer_leg = 'out' THEN ${input.smsRawHash ?? null} ELSE NULL END
     FROM (
       VALUES
         (${input.fromAccountId}::uuid, 'out'::transfer_leg),

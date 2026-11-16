@@ -23,7 +23,8 @@ export type ResolveSmsTransactionAmountResult =
 
 export async function resolveSmsTransactionAmount(
   userId: string,
-  parsed: Pick<SmsParseResult, "amount" | "currency" | "date">
+  parsed: Pick<SmsParseResult, "amount" | "currency" | "date">,
+  cachedCurrency?: CurrencyCode
 ): Promise<ResolveSmsTransactionAmountResult> {
   if (parsed.amount <= 0) {
     return { ok: false, reason: "Parsed transaction amount is missing or invalid" };
@@ -35,7 +36,7 @@ export async function resolveSmsTransactionAmount(
     return { ok: false, reason: "Parsed transaction date is missing or invalid" };
   }
 
-  const userCurrency = await getUserCurrency(userId);
+  const userCurrency = cachedCurrency ?? await getUserCurrency(userId);
   const parsedAmount = parseAmountForStorage(parsed.amount);
   if (parsedAmount == null) {
     return { ok: false, reason: "Parsed transaction amount is missing or invalid" };

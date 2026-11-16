@@ -19,6 +19,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import { NewRuleButton } from "./new-rule-button";
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType, Transaction, TransactionAttachment } from "@/lib/budget-types";
 import { candidateCounterpartyRuleKeys } from "@/lib/sms-parser";
@@ -890,6 +891,7 @@ function TransactionFormFields({
         <p className="text-sm text-muted-foreground">{submitMessage}</p>
       )}
       <DialogFooter>
+        <NewRuleButton disabled={submitting} draft={{ type: effectiveType, categoryId, notes, smsMessage, accountId, counterAccountId: toAccountId }} />
         <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>

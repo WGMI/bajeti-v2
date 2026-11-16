@@ -20,6 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { NewRuleButton } from "./new-rule-button";
 import { useBudget } from "@/lib/budget-store";
 import type { CategoryType } from "@/lib/budget-types";
 import type { VoiceTransactionParseResult } from "@/lib/voice-transaction-parser";
@@ -478,6 +479,7 @@ export function GlobalVoiceTransactionDialog() {
         </div>
 
         <DialogFooter>
+          <NewRuleButton disabled={saving || !preview} draft={{ type, categoryId, notes, accountId, counterAccountId: toAccountId }} />
           <Button type="button" variant="outline" onClick={close} disabled={saving}>
             Cancel
           </Button>

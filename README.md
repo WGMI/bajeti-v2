@@ -4,6 +4,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Authenticated REST endpoints for the mobile app are documented in [`docs/MOBILE-API.md`](docs/MOBILE-API.md) (summary, transactions list, settings, SMS). All routes use Clerk: `Authorization: Bearer <clerk_session_token>`.
 
+## Shared SMS inbox
+
+Before deploying this feature, run `npm run migrate:sms-inbox` against the target database.
+The existing `BAJETI_TEXT_ENCRYPTION_KEY` is required; message bodies are encrypted before storage.
+See [SMS inbox integration](docs/SMS-INBOX.md) for behavior, endpoints, and rollout checks.
+Run `npm run test:sms-inbox` for inbox authorization, encryption, totals, and retry checks.
+
 ## Transaction text encryption
 
 Transaction `notes` and raw SMS bodies are encrypted before they are written to the database. Set `BAJETI_TEXT_ENCRYPTION_KEY` to a 32-byte base64 value in every environment that reads or writes transactions:

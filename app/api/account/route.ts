@@ -10,6 +10,8 @@ export async function DELETE() {
 
   try {
     await sql.transaction((tx) => [
+      tx`DELETE FROM sms_inbox WHERE user_id = ${userId}`,
+      tx`DELETE FROM sms_inbox_devices WHERE user_id = ${userId}`,
       tx`DELETE FROM transaction_comments WHERE user_id = ${userId}`,
       tx`DELETE FROM transaction_attachments WHERE uploaded_by_user_id = ${userId}`,
       tx`DELETE FROM counterparty_category_rules WHERE user_id = ${userId}`,

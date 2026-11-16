@@ -6,6 +6,7 @@ import { ActivityGraphCard } from "@/components/dashboard/activity-graph-card";
 import { RecentTransactionsCard } from "@/components/dashboard/recent-transactions-card";
 import { BudgetDashboardCard } from "@/components/dashboard/budget-dashboard-card";
 import { useBudget } from "@/lib/budget-store";
+import { PendingBalanceCard } from "@/components/dashboard/pending-balance-card";
 import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
@@ -32,6 +33,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-w-0 space-y-6">
+      <PendingBalanceCard />
       <div className="grid gap-4 md:grid-cols-2">
         <EarningSummaryCard />
         <PaymentStatisticsCard />

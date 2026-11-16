@@ -17,6 +17,7 @@ import {
   parseAttachmentInputs,
 } from "@/lib/transaction-attachments";
 import {
+  keyedFingerprint,
   encryptNumber,
   encryptOptionalText,
   encryptText,
@@ -50,6 +51,10 @@ async function fetchTransactionByIdempotency(
   hashedKey: string,
   rawKey: string | null | undefined
 ): Promise<TransactionRow | null> {
+  const candidates = [hashedKey, rawKey];
+  if (rawKey?.startsWith("sms|")) {
+    candidates.push(sha256(rawKey), keyedFingerprint(rawKey, "sms_idempotency"), keyedFingerprint(sha256(rawKey), "sms_idempotency"));
+  }
   const rows = await sql`
     SELECT
       t.id, t.user_id, t.group_id, t.added_by_user_id, t.paid_by_user_id,
@@ -98,7 +103,7 @@ async function fetchTransactionByIdempotency(
         ? sql`t.group_id = ${groupId}`
         : sql`t.user_id = ${userId} AND t.group_id IS NULL`
     }
-      AND (t.sms_idempotency_key = ${hashedKey} OR t.sms_idempotency_key = ${rawKey})
+      AND t.sms_idempotency_key IN (SELECT jsonb_array_elements_text(${JSON.stringify(candidates.filter(Boolean))}::jsonb))
     LIMIT 1
   `;
   return (await hydrateAddedByNames(rows as TransactionRow[], groupId))[0] ?? null;
@@ -346,7 +351,23 @@ export async function POST(request: Request) {
       typeof idempotencyKey === "string" && idempotencyKey.trim().length > 0
         ? idempotencyKey.trim().slice(0, 255)
         : null;
-    const hashedIdempotencyKey = normalizedIdempotencyKey ? sha256(normalizedIdempotencyKey) : null;
+    const hashedIdempotencyKey = normalizedIdempotencyKey
+      ? (normalizedIdempotencyKey.startsWith("sms|") ? keyedFingerprint(normalizedIdempotencyKey, "sms_idempotency") : sha256(normalizedIdempotencyKey))
+      : null;
+    const rawSmsHash = typeof smsMessage === "string" && smsMessage.trim()
+      ? keyedFingerprint(smsMessage.replace(/\s+/g, " ").trim().toLowerCase(), "sms_raw") : null;
+
+    if (hashedIdempotencyKey) {
+      const existing = await fetchTransactionByIdempotency(
+        userId,
+        scope.groupId,
+        hashedIdempotencyKey,
+        normalizedIdempotencyKey
+      );
+      if (existing) {
+        return NextResponse.json(transactionCreateResponse(existing, "duplicate"));
+      }
+    }
 
     if (type === "transfer") {
       if (!fromAccountId || !toAccountId) {
@@ -368,6 +389,7 @@ export async function POST(request: Request) {
           smsMessage:
             typeof smsMessage === "string" && smsMessage.trim() ? smsMessage.trim() : null,
           idempotencyKey: hashedIdempotencyKey,
+          smsRawHash: rawSmsHash,
         });
         const outLeg = pair.find((r) => r.transfer_leg === "out") ?? pair[0];
         if (attachments && attachments.length > 0) {
@@ -385,6 +407,10 @@ export async function POST(request: Request) {
         }
         return NextResponse.json(transactionCreateResponse(outLeg, "created"));
       } catch (err) {
+        if (hashedIdempotencyKey) {
+          const existing = await fetchTransactionByIdempotency(userId, scope.groupId, hashedIdempotencyKey, normalizedIdempotencyKey);
+          if (existing) return NextResponse.json(transactionCreateResponse(existing, "duplicate"));
+        }
         const message = err instanceof Error ? err.message : "Failed to create transfer";
         return NextResponse.json({ error: message }, { status: 400 });
       }
@@ -402,23 +428,11 @@ export async function POST(request: Request) {
     const encryptionSubjectId = scope.groupId ?? userId;
     const resolvedAccountId = await resolveAccountId(userId, accountId, scope.groupId);
 
-    if (hashedIdempotencyKey) {
-      const existing = await fetchTransactionByIdempotency(
-        userId,
-        scope.groupId,
-        hashedIdempotencyKey,
-        normalizedIdempotencyKey
-      );
-      if (existing) {
-        return NextResponse.json(transactionCreateResponse(existing, "duplicate"));
-      }
-    }
-
     const rows = await sql`
       INSERT INTO transactions (
         user_id, group_id, added_by_user_id, paid_by_user_id,
         amount_encrypted, transaction_charges, transaction_charges_encrypted,
-        category_id, account_id, date, notes, sms_message, type, sms_idempotency_key
+        category_id, account_id, date, notes, sms_message, type, sms_idempotency_key, sms_raw_hash
       )
       VALUES (
         ${userId},
@@ -440,7 +454,8 @@ export async function POST(request: Request) {
           { userId: encryptionSubjectId, field: "sms_message" }
         )},
         ${type}::category_type,
-        ${hashedIdempotencyKey}
+        ${hashedIdempotencyKey},
+        ${rawSmsHash}
       )
       ON CONFLICT DO NOTHING
       RETURNING id

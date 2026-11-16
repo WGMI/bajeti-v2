@@ -124,6 +124,7 @@ export function CreateCounterpartyRuleDialog({
         throw new Error((err as { error?: string }).error ?? "Failed to save rule");
       }
       await refetch();
+      window.dispatchEvent(new Event("bajeti-rules-changed"));
       onOpenChange(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save rule");

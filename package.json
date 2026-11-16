@@ -12,7 +12,9 @@
     "audit:encrypt-transaction-amounts": "node scripts/audit-transaction-amount-encryption.mjs",
     "finalize:encrypt-transaction-amounts": "node scripts/finalize-transaction-amount-encryption.mjs",
     "drop:legacy-transaction-amount": "node scripts/drop-legacy-transaction-amount-column.mjs",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate:sms-inbox": "node scripts/migrate-sms-inbox.mjs",
+    "test:sms-inbox": "node --test scripts/test-sms-inbox.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.37.3",

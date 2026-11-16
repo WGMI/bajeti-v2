@@ -11,10 +11,13 @@ export type SmsCounterpartyRuleResolution = {
   transferToAccountId: string | null;
 };
 
+export type SmsRuleRow = { counterparty_key: string; transaction_type: string; category_id: string; transfer_to_account_id: string | null };
+
 export async function resolveCategoryForSmsIngestion(
   userId: string,
   parsed: { type: string; counterpartyKey: string | null; message?: string },
-  categoryRows: CategoryRow[]
+  categoryRows: CategoryRow[],
+  cachedRules?: SmsRuleRow[]
 ): Promise<SmsCounterpartyRuleResolution> {
   const categoriesForType = categoryRows.filter((c) => c.type === parsed.type);
   const otherCategory = categoriesForType.find((c) =>
@@ -28,7 +31,10 @@ export async function resolveCategoryForSmsIngestion(
   if (candidateKeys.length === 0) {
     return { category: fallback, transferToAccountId: null };
   }
-  const ruleRows = await sql`
+  const ruleRows = cachedRules ? cachedRules
+    .filter(r => r.transaction_type === parsed.type && candidateKeys.includes(r.counterparty_key))
+    .sort((a, b) => candidateKeys.indexOf(a.counterparty_key) - candidateKeys.indexOf(b.counterparty_key))
+    .slice(0, 1) : await sql`
     SELECT r.category_id, r.transfer_to_account_id
     FROM counterparty_category_rules r
     INNER JOIN categories c ON c.id = r.category_id AND c.user_id = ${userId}

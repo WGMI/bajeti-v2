@@ -142,8 +142,8 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!messages.every((m) => typeof m === "string")) {
-      return apiJson({ error: "Invalid payload: all messages must be strings" }, { status: 400 });
+    if (!messages.every((m) => typeof m === "string" || (m && typeof m === "object" && typeof m.message === "string" && typeof m.timestamp === "number" && Number.isFinite(m.timestamp) && m.timestamp >= 0 && m.timestamp <= Date.now() + 86400000))) {
+      return apiJson({ error: "Each message must be a string or { message, timestamp }" }, { status: 400 });
     }
 
     const transactionDateSource = await getSmsTransactionDateSource(userId);
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     let categoryRows = await sql`
       SELECT id, name, type
       FROM categories
-      WHERE user_id = ${userId}
+      WHERE user_id = ${userId} AND group_id IS NULL
       ORDER BY type, name
     ` as CategoryRow[];
 
@@ -170,7 +170,7 @@ export async function POST(request: Request) {
       categoryRows = await sql`
         SELECT id, name, type
         FROM categories
-        WHERE user_id = ${userId}
+        WHERE user_id = ${userId} AND group_id IS NULL
         ORDER BY type, name
       ` as CategoryRow[];
     }
@@ -178,7 +178,9 @@ export async function POST(request: Request) {
     const results: BulkItemResult[] = [];
 
     for (let i = 0; i < messages.length; i++) {
-      const rawMessage = messages[i];
+      const item = messages[i];
+      const rawMessage: string = typeof item === "string" ? item : item.message;
+      const receivedAt = typeof item === "string" ? timestamp : item.timestamp;
       const message = rawMessage.trim();
       if (!message) {
         results.push({
@@ -188,7 +190,7 @@ export async function POST(request: Request) {
           reason: "Empty SMS message",
           parsed: extractParsedForResponse(
             parseSMS("", {
-              timestamp: typeof timestamp === "number" ? timestamp : null,
+              timestamp: typeof receivedAt === "number" ? receivedAt : null,
               transactionDateSource,
             })
           ),
@@ -198,7 +200,7 @@ export async function POST(request: Request) {
 
       try {
         const parsed = parseSMS(message, {
-          timestamp: typeof timestamp === "number" ? timestamp : null,
+          timestamp: typeof receivedAt === "number" ? receivedAt : null,
           transactionDateSource,
         });
 

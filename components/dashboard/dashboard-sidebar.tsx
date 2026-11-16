@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Home,
+  MessageSquare,
   FolderTree,
   Calendar,
   ChartNoAxesColumnIncreasing,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
   { href: "/dashboard/transactions", icon: Receipt, label: "Transactions" },
+  { href: "/dashboard/messages", icon: MessageSquare, label: "Messages" },
   { href: "/dashboard/monthly", icon: Calendar, label: "Monthly view" },
   { href: "/dashboard/budgets", icon: ChartNoAxesColumnIncreasing, label: "Budgets" },
   { href: "/dashboard/groups", icon: Users, label: "Groups" },
