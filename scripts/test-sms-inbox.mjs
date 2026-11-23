@@ -9,9 +9,9 @@ const require = createRequire(import.meta.url);
 function load(path, mocks = {}) {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const module = { exports: {} };
-  vm.runInNewContext(code, { module, exports: module.exports, require: name => name in mocks ? mocks[name] : require(name), Request, Response, Headers, URL, Date, Set, Map, console, Buffer, process });
-  return module.exports;
+  const loadedModule = { exports: {} };
+  vm.runInNewContext(code, { module: loadedModule, exports: loadedModule.exports, require: name => name in mocks ? mocks[name] : require(name), Request, Response, Headers, URL, Date, Set, Map, console, Buffer, process });
+  return loadedModule.exports;
 }
 const json = (value, init) => Response.json(value, init);
 const id = "11111111-1111-4111-8111-111111111111";
@@ -62,12 +62,19 @@ test("inbox ciphertext is bound to its user and detects tampering", () => {
   } finally { if (previous == null) delete process.env.BAJETI_TEXT_ENCRYPTION_KEY; else process.env.BAJETI_TEXT_ENCRYPTION_KEY = previous; }
 });
 
-function actionRoute(inspect, importer, queries) {
+function actionRoute(inspect, importer, queries, checkAccounts = () => assert.fail("Unexpected transfer")) {
   return load("app/api/sms/inbox/action/route.ts", {
     "next/server": { NextResponse: { json } }, "@clerk/nextjs/server": { auth: async () => ({ userId: "alice" }) },
-    "@/lib/db": { sql: async (strings, ...values) => { queries.push({ query: strings.join("?"), values }); return strings.join("").includes("SELECT *") ? [{ id, status: "pending" }] : []; } },
+    "@/lib/db": { sql: async (strings, ...values) => {
+      const query = strings.join("?");
+      queries.push({ query, values });
+      if (query.includes("SELECT *")) return [{ id, status: "pending" }];
+      if (query.includes("SELECT id FROM categories") && values.includes("transfer")) return [{ id: "transfer-cat" }];
+      return [];
+    } },
     "@/lib/sms-inbox": { inspectInboxMessage: inspect, smsRequest: () => request({}) },
     "@/lib/sms-import-service": { importSms: importer },
+    "@/lib/transfers": { assertDistinctAccounts: checkAccounts },
   });
 }
 
@@ -87,6 +94,22 @@ test("failed imports remain pending and can be retried", async () => {
   assert.equal(queries.filter(q => q.query.includes("UPDATE")).length, 0);
 });
 
+test("a reviewed SMS can change type and save notes and both transfer accounts", async () => {
+  const queries = [];
+  const fromAccountId = "22222222-2222-4222-8222-222222222222";
+  const toAccountId = "33333333-3333-4333-8333-333333333333";
+  let saved;
+  const route = actionRoute(async () => item(), async (_user, _request, edits) => {
+    saved = edits;
+    return json({ status: "created", transaction: { id: "saved" } });
+  }, queries, async (...args) => assert.deepEqual(args, ["alice", null, fromAccountId, toAccountId]));
+  const edits = { type: "transfer", amount: 101, transactionCharges: 0, date: "2026-11-17", categoryId: "transfer-cat", notes: "Move funds", fromAccountId, toAccountId };
+  const result = await (await route.POST(request({ ids: [id], action: "sync", edits }))).json();
+  assert.equal(result.results[0].status, "synced");
+  assert.deepEqual({ ...saved }, edits);
+  assert.ok(queries.some(q => q.query.includes("UPDATE") && q.values.includes("saved")));
+});
+
 test("a dismissal only updates the signed-in user's inbox", async () => {
   const queries = [];
   const route = actionRoute(() => { throw new Error("Dismiss must not parse"); }, () => { throw new Error("Dismiss must not import"); }, queries);
@@ -97,26 +120,29 @@ test("a dismissal only updates the signed-in user's inbox", async () => {
 
 test("saved and pending balance use one snapshot and exclude the same saved SMS", async () => {
   const snapshotQueries = [];
-  const row = { id, sender: "MPESA", message_encrypted: "source", received_at: "2026-11-16T09:00:00Z", status: "pending", account_id: null, transaction_id: null };
-  const saved = { id: "saved", sms_idempotency_key: "canonical:key", date: "2026-11-16", type: "expense", amount_encrypted: "100", transaction_charges: 5 };
-  const module = load("lib/sms-inbox.ts", {
+  const row = { id, sender: "MPESA", message_encrypted: "source", fingerprint: "raw:other", received_at: "2026-11-16T09:00:00Z", status: "pending", account_id: null, transaction_id: null };
+  const saved = { id: "saved", sms_idempotency_key: "canonical:key", sms_raw_hash: "raw:saved", date: "2026-11-16", type: "expense", amount_encrypted: "100", transaction_charges: 5 };
+  const { inspectPendingMessages } = load("lib/sms-inbox.ts", {
     "./db": { sql: async (strings, ...values) => {
       const query = strings.join("?");
       assert.ok(values.includes("alice"));
-      if (query.includes("AS inbox")) { snapshotQueries.push(query); return [{ inbox: [row], saved: [saved] }]; }
+      if (query.includes("AS inbox")) { snapshotQueries.push(query); return [{ inbox: [row, { ...row, fingerprint: saved.sms_raw_hash, message_encrypted: "already saved" }], saved: [saved] }]; }
       return [];
     } },
     "./text-encryption": { decryptText: x => x, decryptNumber: x => Number(x), decryptOptionalNumber: (_cipher, plain) => plain, keyedFingerprint: x => `canonical:${x}` },
     "./user-currency": { getUserCurrency: async () => "KES" },
     "./user-sms-settings": { getSmsTransactionDateSource: async () => "received_at" },
     "./bajeti-scope": { ensureDefaultCategoriesForScope: async () => {} },
-    "./sms-preview-service": { previewSms: async () => json({ status: "ready", preview: item().preview, smsIdempotencyKey: "key" }) },
+    "./sms-preview-service": { previewSms: async (_user, request) => {
+      assert.equal((await request.json()).message, "source");
+      return json({ status: "ready", preview: item().preview, smsIdempotencyKey: "key" });
+    } },
   });
-  const result = await module.inspectPendingMessages("alice", "2026-11");
+  const result = await inspectPendingMessages("alice", "2026-11");
   assert.equal(snapshotQueries.length, 1);
   assert.ok(snapshotQueries[0].includes("sms_inbox") && snapshotQueries[0].includes("FROM transactions"));
   assert.equal(result.savedBalance, -105);
-  assert.equal(result.messages[0].previewStatus, "duplicate");
+  assert.equal(result.messages.length, 0);
   const { pendingSmsTotal } = load("lib/pending-sms-total.ts");
   assert.equal(result.savedBalance + pendingSmsTotal(result.messages, "2026-11", null).balance, -105);
 });

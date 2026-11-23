@@ -1,6 +1,9 @@
 import type { Transaction } from "./budget-types";
 
-export type InboxPreview = Pick<Transaction, "amount" | "transactionCharges" | "currency" | "date" | "type" | "categoryId" | "smsMessage" | "smsCounterparty" | "smsCounterpartyKey">;
+export type InboxPreview = Pick<Transaction, "amount" | "transactionCharges" | "currency" | "date" | "type" | "notes" | "smsMessage" | "smsCounterparty" | "smsCounterpartyKey"> & {
+  categoryId: string | null;
+  transferToAccountId: string | null;
+};
 export type InboxMessage = {
   id: string;
   sender: string;

@@ -57,7 +57,16 @@ function normalizeForHash(text: string): string {
  *
  * Returns: { parsed: SmsParseResult, transaction?: Transaction }
  */
-export type SmsImportEdits = { amount: number; transactionCharges: number; date: string; categoryId: string };
+export type SmsImportEdits = {
+  amount: number;
+  transactionCharges: number;
+  date: string;
+  categoryId: string;
+  type?: CategoryType;
+  notes?: string;
+  fromAccountId?: string;
+  toAccountId?: string;
+};
 
 export async function importSms(userId: string, request: Request, edits?: SmsImportEdits) {
   try {
@@ -104,7 +113,8 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
         parsed: smsParseResultForApi(parsed),
       });
     }
-    const transactionType = effectiveType as CategoryType;
+    const parsedType = effectiveType as CategoryType;
+    const transactionType = edits?.type ?? parsedType;
     const amountResolution = await resolveSmsTransactionAmount(userId, parsed);
     if (!amountResolution.ok) {
       return NextResponse.json({
@@ -141,16 +151,17 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
 
     const { category, transferToAccountId } = await resolveCategoryForSmsIngestion(
       userId,
-      { ...parsed, type: effectiveType },
+      { ...parsed, type: transactionType },
       categoryRows
     );
-    if (!category) {
+    const categoryId = edits?.categoryId ?? category?.id;
+    if (!categoryId) {
       return NextResponse.json(
         {
-          error: `No ${effectiveType} category found for user`,
+          error: `No ${transactionType} category found for user`,
           status: "ignored",
           transactionCreated: false,
-          reason: `No category found for parsed type: ${effectiveType}`,
+          reason: `No category found for transaction type: ${transactionType}`,
           parsed: smsParseResultForApi(parsed),
         },
         { status: 400 }
@@ -159,7 +170,7 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
 
     const normalizedMessage = normalizeForHash(parsed.message);
     const idempotencyInput = buildSmsIdempotencyKey({
-      type: transactionType,
+      type: parsedType,
       amount: stored.idempotencyAmount,
       currency: stored.idempotencyCurrency,
       date: parsed.date,
@@ -189,7 +200,7 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
       LEFT JOIN categories c ON c.id = t.category_id
       LEFT JOIN accounts ac ON ac.id = t.account_id
       WHERE t.user_id = ${userId} AND t.group_id IS NULL
-        AND t.sms_idempotency_key IN (
+        AND (t.sms_raw_hash = ${rawMessageHash} OR t.sms_idempotency_key IN (
           SELECT jsonb_array_elements_text(
             ${JSON.stringify([
               smsIdempotencyKey,
@@ -197,7 +208,7 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
               protectedLegacySmsIdempotencyKey,
             ])}::jsonb
           )
-        )
+        ))
       LIMIT 1
     `;
     const existing = existingRows[0] as TransactionRow | undefined;
@@ -213,7 +224,7 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
 
     const transferCategoryId =
       transactionType === "transfer"
-        ? categoryRows.find((c) => c.type === "transfer")?.id ?? category.id
+        ? categoryRows.find((c) => c.type === "transfer")?.id ?? categoryId
         : null;
 
     const created = await insertSmsTransaction({
@@ -225,17 +236,19 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
       fxRate: stored.fxRate,
       fxRateDate: stored.fxRateDate,
       fxSource: stored.fxSource,
-      categoryId: edits?.categoryId ?? category.id,
+      categoryId,
       date: edits?.date ?? parsed.date,
       message: parsed.message,
+      notes: edits?.notes,
       transactionType,
       smsIdempotencyKey,
       rawMessageHash,
       counterparty: parsed.counterparty,
       counterpartyKey: parsed.counterpartyKey,
       transferCategoryId,
-      accountId: resolvedAccountId,
-      transferToAccountId,
+      accountId: edits?.fromAccountId ?? resolvedAccountId,
+      transferToAccountId: edits?.toAccountId ?? transferToAccountId,
+      requireTransferPair: edits?.toAccountId != null,
       transactionCharges: edits?.transactionCharges ?? parsed.charges,
     });
 
@@ -257,7 +270,7 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
         LEFT JOIN categories c ON c.id = t.category_id
         LEFT JOIN accounts ac ON ac.id = t.account_id
         WHERE t.user_id = ${userId} AND t.group_id IS NULL
-          AND t.sms_idempotency_key IN (
+          AND (t.sms_raw_hash = ${rawMessageHash} OR t.sms_idempotency_key IN (
             SELECT jsonb_array_elements_text(
               ${JSON.stringify([
                 smsIdempotencyKey,
@@ -265,7 +278,7 @@ export async function importSms(userId: string, request: Request, edits?: SmsImp
                 protectedLegacySmsIdempotencyKey,
               ])}::jsonb
             )
-          )
+          ))
         LIMIT 1
       `;
       const row = existingAfterConflict[0] as TransactionRow | undefined;

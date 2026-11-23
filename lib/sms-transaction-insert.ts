@@ -30,6 +30,7 @@ export async function insertSmsTransaction(input: {
   categoryId: string;
   date: string;
   message: string;
+  notes?: string;
   transactionType: CategoryType;
   smsIdempotencyKey: string;
   rawMessageHash: string;
@@ -40,10 +41,11 @@ export async function insertSmsTransaction(input: {
   accountId?: string | null;
   /** From counterparty rule; null uses default Wallet. */
   transferToAccountId?: string | null;
+  requireTransferPair?: boolean;
   transactionCharges?: number | null;
 }): Promise<ReturnType<typeof rowToTransaction> | null> {
   if (input.transactionType === "transfer") {
-    const existingOutLegId = await findExistingTransferGroupOutLeg({
+    const existingOutLegId = !input.requireTransferPair && await findExistingTransferGroupOutLeg({
       userId: input.userId,
       notes: input.message,
       amount: input.amount,
@@ -59,6 +61,7 @@ export async function insertSmsTransaction(input: {
       categoryId: input.categoryId,
       date: input.date,
       message: input.message,
+      notes: input.notes,
       smsIdempotencyKey: input.smsIdempotencyKey,
       rawMessageHash: input.rawMessageHash,
       counterparty: input.counterparty,
@@ -66,7 +69,7 @@ export async function insertSmsTransaction(input: {
       fromAccountId: input.accountId ?? null,
       transferToAccountId: input.transferToAccountId ?? null,
     });
-    if (paired) return paired;
+    if (paired || input.requireTransferPair) return paired;
   }
 
   const accountId = await resolveAccountId(input.userId, input.accountId);
@@ -125,7 +128,7 @@ export async function insertSmsTransaction(input: {
       ${input.categoryId},
       ${accountId},
       ${input.date},
-      ${encryptText("", { userId: input.userId, field: "notes" })},
+      ${encryptText(input.notes ?? "", { userId: input.userId, field: "notes" })},
       ${encryptText(input.message, { userId: input.userId, field: "sms_message" })},
       ${input.transactionType}::category_type,
       ${input.smsIdempotencyKey},

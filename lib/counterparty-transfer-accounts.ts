@@ -210,6 +210,7 @@ export async function insertSmsTransferWithDestination(input: {
   categoryId: string;
   date: string;
   message: string;
+  notes?: string;
   smsIdempotencyKey: string;
   rawMessageHash: string;
   counterparty: string | null;
@@ -233,9 +234,10 @@ export async function insertSmsTransferWithDestination(input: {
       amount: input.amount,
       categoryId: input.categoryId,
       date: input.date,
-      notes: "",
+      notes: input.notes ?? "",
       smsMessage: input.message,
       idempotencyKey: input.smsIdempotencyKey,
+      smsRawHash: input.rawMessageHash,
     });
     const outLeg = rows.find((r) => r.transfer_leg === "out") ?? rows[0];
     if (!outLeg?.id) return null;
@@ -243,9 +245,6 @@ export async function insertSmsTransferWithDestination(input: {
     await sql`
       UPDATE transactions
       SET
-        notes = ${encryptText("", { userId: input.userId, field: "notes" })},
-        sms_message = ${encryptText(input.message, { userId: input.userId, field: "sms_message" })},
-        sms_raw_hash = ${input.rawMessageHash},
         sms_counterparty = ${input.counterparty},
         sms_counterparty_key = ${input.counterpartyKey}
       WHERE user_id = ${input.userId}

@@ -1,29 +1,10 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
-} from "recharts";
 import { useBudget } from "@/lib/budget-store";
 import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
-import { getExpenseByCategory } from "@/lib/budget-utils";
-import { getCurrentMonthKey } from "@/lib/budget-utils";
-
-const PIE_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-  "var(--muted-foreground)",
-  "var(--primary)",
-];
+import { getCurrentMonthKey, getExpenseByCategory, getMonthKey } from "@/lib/budget-utils";
 
 export function ActivityGraphCard() {
   const { transactions, getCategoryById } = useBudget();
@@ -31,11 +12,11 @@ export function ActivityGraphCard() {
   const currentMonth = getCurrentMonthKey();
   const thisMonthTx = transactions.filter((t) => t.type === "expense" && getMonthKey(t.date) === currentMonth);
   const categoryNames: Record<string, string> = {};
-  transactions.forEach((t) => {
+  thisMonthTx.forEach((t) => {
     const cat = getCategoryById(t.categoryId);
     if (cat) categoryNames[t.categoryId] = cat.name;
   });
-  const data = getExpenseByCategory(thisMonthTx, categoryNames);
+  const data = getExpenseByCategory(thisMonthTx, categoryNames).sort((a, b) => b.value - a.value);
 
   if (data.length === 0) {
     return (
@@ -52,11 +33,7 @@ export function ActivityGraphCard() {
     );
   }
 
-  const total = data.reduce((s, d) => s + d.value, 0);
-  const chartData = data.map((d, i) => ({
-    ...d,
-    fill: PIE_COLORS[i % PIE_COLORS.length],
-  }));
+  const maxExpense = data[0].value;
 
   return (
     <Card className="shadow-sm">
@@ -64,38 +41,23 @@ export function ActivityGraphCard() {
         <CardTitle className="text-base font-medium">Expense by category</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-48 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius="40%"
-                outerRadius="80%"
-                paddingAngle={2}
-                dataKey="value"
-                nameKey="name"
-                stroke="none"
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value: number) =>
-                  `${formatCurrency(value, currency)} (${total > 0 ? ((value / total) * 100).toFixed(0) : 0}%)`
-                }
-              />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+        <ul aria-label="Monthly expenses by category" className="space-y-3">
+          {data.map(({ name, value }) => (
+            <li key={name} className="space-y-1">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                <span className="min-w-0 break-words">{name}</span>
+                <span className="tabular-nums text-muted-foreground">{formatCurrency(value, currency)}</span>
+              </div>
+              <div aria-hidden="true" className="h-3 rounded-sm bg-muted">
+                <div
+                  className="h-full rounded-sm bg-primary"
+                  style={{ width: `${maxExpense > 0 ? (value / maxExpense) * 100 : 0}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );
-}
-
-function getMonthKey(date: string) {
-  return date.slice(0, 7);
 }

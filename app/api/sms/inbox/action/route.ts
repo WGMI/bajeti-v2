@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { inspectInboxMessage, smsRequest, type InboxRow } from "@/lib/sms-inbox";
 import { importSms, type SmsImportEdits } from "@/lib/sms-import-service";
+import { assertDistinctAccounts } from "@/lib/transfers";
 
 export const maxDuration = 60;
 
@@ -32,10 +33,25 @@ export async function POST(request: Request) {
           let validated: SmsImportEdits | undefined;
           if (edits) {
             const amount = Number(edits.amount), charges = Number(edits.transactionCharges ?? 0);
-            if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(charges) || charges < 0 || typeof edits.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(edits.date) || new Date(edits.date).toISOString().slice(0, 10) !== edits.date) throw new Error("Check amount, fees and date");
-            const category = await sql`SELECT id FROM categories WHERE user_id = ${userId} AND group_id IS NULL AND id::text = ${edits.categoryId} AND type::text = ${item.preview.type}`;
+            const date = typeof edits.date === "string" ? new Date(edits.date) : null;
+            if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(charges) || charges < 0 || !date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== edits.date) throw new Error("Check amount, fees and date");
+            const type = edits.type ?? item.preview.type;
+            if (type !== "income" && type !== "expense" && type !== "transfer") throw new Error("Choose a transaction type");
+            if (typeof edits.categoryId !== "string") throw new Error("Choose a category for this transaction type");
+            const category = await sql`SELECT id FROM categories WHERE user_id = ${userId} AND group_id IS NULL AND id::text = ${edits.categoryId} AND type::text = ${type}`;
             if (!category.length) throw new Error("Choose a category for this transaction type");
-            validated = { amount, transactionCharges: charges, date: edits.date, categoryId: edits.categoryId };
+            if (edits.notes != null && typeof edits.notes !== "string") throw new Error("Check the transaction notes");
+            validated = { amount, transactionCharges: charges, date: edits.date, categoryId: edits.categoryId, type, notes: edits.notes?.trim() };
+            if (type === "transfer" && (edits.type != null || edits.fromAccountId != null || edits.toAccountId != null)) {
+              const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+              const { fromAccountId, toAccountId } = edits;
+              if (typeof fromAccountId !== "string" || typeof toAccountId !== "string" || !uuid.test(fromAccountId) || !uuid.test(toAccountId)) {
+                throw new Error("Choose two different accounts for the transfer");
+              }
+              await assertDistinctAccounts(userId, null, fromAccountId, toAccountId);
+              validated.fromAccountId = fromAccountId;
+              validated.toAccountId = toAccountId;
+            }
           }
           const response = await importSms(userId, smsRequest(item.message, item.timestamp, item.accountId), validated);
           const result = await response.json();

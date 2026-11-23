@@ -11,25 +11,16 @@ import type { SmsRuleRow } from "./counterparty-helpers";
 import type { CurrencyCode } from "./currency-codes";
 import type { SmsTransactionDateSource } from "./sms-parser";
 import type { CategoryType } from "@/lib/budget-types";
+import type { InboxPreview } from "./sms-inbox-types";
 
 type CategoryRow = { id: string; name: string; type: string };
 
-type PreviewTransaction = {
-  amount: number;
-  currency: string;
+type PreviewTransaction = InboxPreview & {
   originalAmount: number | null;
   originalCurrency: string | null;
   fxRate: number | null;
   fxRateDate: string | null;
   fxSource: string | null;
-  categoryId: string | null;
-  date: string;
-  notes: string;
-  smsMessage: string;
-  type: CategoryType;
-  smsCounterparty: string | null;
-  smsCounterpartyKey: string | null;
-  transactionCharges: number;
 };
 
 async function resolveEffectiveTransactionType(
@@ -145,7 +136,7 @@ export async function previewSms(userId: string, request: Request, context?: Sms
       ` as CategoryRow[];
     }
 
-    const { category } = await resolveCategoryForSmsIngestion(
+    const { category, transferToAccountId } = await resolveCategoryForSmsIngestion(
       userId,
       { ...parsed, type: effectiveType },
       categoryRows,
@@ -182,6 +173,7 @@ export async function previewSms(userId: string, request: Request, context?: Sms
       fxRateDate: stored.fxRateDate,
       fxSource: stored.fxSource,
       categoryId: category?.id ?? null,
+      transferToAccountId,
       date: parsed.date,
       notes: "",
       smsMessage: parsed.message,

@@ -169,7 +169,7 @@ export function BudgetDashboardCard() {
                     overall.remaining < 0 ? "text-destructive" : "text-success"
                   )}
                 >
-                  {formatCurrency(Math.abs(overall.remaining), currency)}
+                  {formatCurrency(overall.remaining, currency)}
                 </p>
                 {overall.remaining < 0 && (
                   <p className="text-xs text-destructive">Over budget</p>

@@ -18,7 +18,6 @@ import { useBudget } from "@/lib/budget-store";
 import { useEffectiveCurrency } from "@/lib/use-effective-currency";
 import { formatCurrency } from "@/lib/format-currency";
 import {
-  createBudgetId,
   getBudgetUsages,
   getCategoryBudgetUsages,
   getOverallBudgetUsage,
@@ -34,6 +33,11 @@ function getProgressColor(percentUsed: number) {
 }
 
 export default function BudgetsPage() {
+  const { selectedGroupId } = useBudget();
+  return <BudgetEditor key={selectedGroupId ?? "personal"} />;
+}
+
+function BudgetEditor() {
   const {
     budgetPlans,
     categories,
@@ -46,10 +50,11 @@ export default function BudgetsPage() {
   } = useBudget();
   const currency = useEffectiveCurrency();
   const [month, setMonth] = useState(getCurrentMonthKey());
-  const [overallAmount, setOverallAmount] = useState("");
+  const [overallDraft, setOverallDraft] = useState<string | null>(null);
   const [categoryAmounts, setCategoryAmounts] = useState<Record<string, string>>({});
   const [categorySearch, setCategorySearch] = useState("");
   const [savingAction, setSavingAction] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const expenseCategories = useMemo(
     () => categories.filter((category) => category.type === "expense"),
@@ -75,45 +80,60 @@ export default function BudgetsPage() {
     [budgetPlans, categories, month, transactions]
   );
   const planByCategory = useMemo(() => {
-    const map = new Map(budgetPlans.map((plan) => [plan.id, plan]));
+    const map = new Map(budgetPlans
+      .filter((plan) => plan.type === "category" && plan.month === month)
+      .map((plan) => [plan.categoryId, plan]));
     return map;
-  }, [budgetPlans]);
+  }, [budgetPlans, month]);
+  const overallPlan = budgetPlans.find((plan) => plan.type === "overall" && plan.month === month);
+  const overallAmount = overallDraft ?? overallPlan?.amount.toString() ?? "";
+
+  const runBudgetAction = async (action: string, mutate: () => Promise<void>) => {
+    setSavingAction(action);
+    setSaveError(null);
+    try {
+      await mutate();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Could not update the budget");
+    } finally {
+      setSavingAction(null);
+    }
+  };
 
   const saveOverall = async (event: FormEvent) => {
     event.preventDefault();
-    const amount = Number(overallAmount || overallUsage?.budget || 0);
-    if (amount <= 0) return;
-    setSavingAction("overall");
-    try {
+    const amount = Number(overallAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    await runBudgetAction("overall", async () => {
       await upsertBudgetPlan({ type: "overall", month, amount });
-      setOverallAmount("");
-    } finally {
-      setSavingAction(null);
-    }
+      setOverallDraft(null);
+    });
   };
 
-  const saveCategory = async (categoryId: string) => {
-    const amount = Number(categoryAmounts[categoryId] ?? "");
-    if (amount <= 0) return;
-    const actionKey = `category:${categoryId}`;
-    setSavingAction(actionKey);
-    try {
+  const saveCategory = async (event: FormEvent, categoryId: string) => {
+    event.preventDefault();
+    const amount = Number(categoryAmounts[categoryId]);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    await runBudgetAction(`category:${categoryId}`, async () => {
       await upsertBudgetPlan({ type: "category", month, categoryId, amount });
-      setCategoryAmounts((current) => ({ ...current, [categoryId]: "" }));
-    } finally {
-      setSavingAction(null);
-    }
+      clearCategoryDraft(categoryId);
+    });
   };
 
-  const removeBudget = async (id: string) => {
-    const actionKey = `remove:${id}`;
-    setSavingAction(actionKey);
-    try {
-      await deleteBudgetPlan(id);
-    } finally {
-      setSavingAction(null);
-    }
+  const clearCategoryDraft = (categoryId: string) => {
+    setCategoryAmounts((current) => {
+      const next = { ...current };
+      delete next[categoryId];
+      return next;
+    });
   };
+
+  const removeBudget = (id: string, categoryId?: string) =>
+    runBudgetAction(`remove:${id}`, async () => {
+      await deleteBudgetPlan(id);
+      if (categoryId) clearCategoryDraft(categoryId);
+      else setOverallDraft(null);
+    });
 
   if (loading) {
     return (
@@ -148,11 +168,20 @@ export default function BudgetsPage() {
           <Input
             type="month"
             value={month}
-            onChange={(event) => setMonth(event.target.value)}
+            disabled={savingAction !== null}
+            aria-label="Budget month"
+            onChange={(event) => {
+              setMonth(event.target.value);
+              setOverallDraft(null);
+              setCategoryAmounts({});
+              setSaveError(null);
+            }}
             className="h-8 border-0 p-0 shadow-none focus-visible:ring-0"
           />
         </label>
       </div>
+
+      {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <Card className="shadow-sm">
@@ -166,20 +195,18 @@ export default function BudgetsPage() {
             <form onSubmit={saveOverall} className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="number"
-                min="0"
-                step="1"
+                required
+                min="0.01"
+                step="0.01"
                 value={overallAmount}
-                disabled={savingAction === "overall"}
-                onChange={(event) => setOverallAmount(event.target.value)}
-                placeholder={
-                  overallUsage
-                    ? String(Math.round(overallUsage.budget))
-                    : "Monthly amount"
-                }
+                disabled={savingAction !== null}
+                onChange={(event) => setOverallDraft(event.target.value)}
+                placeholder="Monthly amount"
+                aria-label="Overall budget amount"
               />
-              <Button type="submit" className="sm:w-28" disabled={savingAction === "overall"}>
+              <Button type="submit" className="sm:w-32" disabled={savingAction !== null || !month || overallDraft === null}>
                 {savingAction === "overall" && <Loader2 className="h-4 w-4 animate-spin" />}
-                {savingAction === "overall" ? "Saving" : "Save"}
+                {savingAction === "overall" ? "Saving" : overallPlan ? "Save changes" : "Save"}
               </Button>
             </form>
 
@@ -206,7 +233,7 @@ export default function BudgetsPage() {
                         overallUsage.remaining < 0 ? "text-destructive" : "text-success"
                       )}
                     >
-                      {formatCurrency(Math.abs(overallUsage.remaining), currency)}
+                      {formatCurrency(overallUsage.remaining, currency)}
                     </p>
                   </div>
                 </div>
@@ -219,7 +246,7 @@ export default function BudgetsPage() {
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  disabled={savingAction === `remove:${overallUsage.plan.id}`}
+                  disabled={savingAction !== null}
                   onClick={() => removeBudget(overallUsage.plan.id)}
                 >
                   {savingAction === `remove:${overallUsage.plan.id}` ? (
@@ -268,7 +295,9 @@ export default function BudgetsPage() {
                   />
                   <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
                     <span>{formatCurrency(usage.spent, currency)} spent</span>
-                    <span>{formatCurrency(Math.abs(usage.remaining), currency)} remaining</span>
+                    <span className={usage.remaining < 0 ? "text-destructive" : undefined}>
+                      {formatCurrency(usage.remaining, currency)} remaining
+                    </span>
                   </div>
                 </div>
               ))
@@ -321,9 +350,9 @@ export default function BudgetsPage() {
           ) : (
             <div className="divide-y rounded-lg border">
               {filteredExpenseCategories.map((category) => {
-                const id = createBudgetId("category", month, category.id);
-                const plan = planByCategory.get(id);
-                const usage = categoryUsages.find((item) => item.plan.id === id);
+                const plan = planByCategory.get(category.id);
+                const usage = categoryUsages.find((item) => item.plan.id === plan?.id);
+                const draft = categoryAmounts[category.id];
                 return (
                   <div key={category.id} className="grid gap-3 p-3 lg:grid-cols-[1fr_1fr_auto] lg:items-center">
                     <div className="min-w-0">
@@ -351,39 +380,40 @@ export default function BudgetsPage() {
                         <p className="text-sm text-muted-foreground">Set an amount to start tracking.</p>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <form onSubmit={(event) => saveCategory(event, category.id)} className="flex gap-2">
                       <Input
                         type="number"
-                        min="0"
-                        step="1"
-                        value={categoryAmounts[category.id] ?? ""}
-                        disabled={savingAction === `category:${category.id}`}
+                        required
+                        min="0.01"
+                        step="0.01"
+                        value={draft ?? plan?.amount.toString() ?? ""}
+                        disabled={savingAction !== null}
                         onChange={(event) =>
                           setCategoryAmounts((current) => ({
                             ...current,
                             [category.id]: event.target.value,
                           }))
                         }
-                        placeholder={plan ? String(Math.round(plan.amount)) : "Amount"}
+                        placeholder="Amount"
+                        aria-label={`${category.name} budget amount`}
                         className="w-full lg:w-32"
                       />
                       <Button
-                        type="button"
-                        disabled={savingAction === `category:${category.id}`}
-                        onClick={() => saveCategory(category.id)}
+                        type="submit"
+                        disabled={savingAction !== null || !month || draft === undefined}
                       >
                         {savingAction === `category:${category.id}` && (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         )}
-                        {savingAction === `category:${category.id}` ? "Saving" : "Save"}
+                        {savingAction === `category:${category.id}` ? "Saving" : plan ? "Save changes" : "Save"}
                       </Button>
                       {plan && (
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
-                          disabled={savingAction === `remove:${plan.id}`}
-                          onClick={() => removeBudget(plan.id)}
+                          disabled={savingAction !== null}
+                          onClick={() => removeBudget(plan.id, category.id)}
                           aria-label={`Remove ${category.name} budget`}
                         >
                           {savingAction === `remove:${plan.id}` ? (
@@ -393,7 +423,7 @@ export default function BudgetsPage() {
                           )}
                         </Button>
                       )}
-                    </div>
+                    </form>
                   </div>
                 );
               })}
