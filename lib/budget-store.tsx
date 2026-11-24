@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Account, BajetiGroupScope, BudgetPlan, Category, Transaction } from "./budget-types";
 
 const API = "/api";
@@ -30,6 +30,7 @@ interface BudgetState {
   accounts: Account[];
   groups: BajetiGroupScope[];
   selectedGroupId: string | null;
+  dataScope: string | null | undefined;
   categories: Category[];
   transactions: Transaction[];
   budgetPlans: BudgetPlan[];
@@ -82,6 +83,9 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [groups, setGroups] = useState<BajetiGroupScope[]>([]);
   const [selectedGroupId, setSelectedGroupIdState] = useState<string | null>(null);
+  const [dataScope, setDataScope] = useState<string | null | undefined>(undefined);
+  const requestVersion = useRef(0);
+  const selectedGroup = useRef<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgetPlans, setBudgetPlans] = useState<BudgetPlan[]>([]);
@@ -90,15 +94,24 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = window.localStorage.getItem("bajeti:selected-group-id");
-    setSelectedGroupIdState(stored && stored !== "personal" ? stored : null);
+    selectedGroup.current = stored && stored !== "personal" ? stored : null;
+    setSelectedGroupIdState(selectedGroup.current);
   }, []);
 
   const setSelectedGroupId = useCallback((groupId: string | null) => {
+    if (groupId === selectedGroup.current) return;
+    selectedGroup.current = groupId;
+    requestVersion.current += 1;
+    setDataScope(undefined);
+    setLoading(true);
+    setError(null);
     setSelectedGroupIdState(groupId);
     window.localStorage.setItem("bajeti:selected-group-id", groupId ?? "personal");
   }, []);
 
   const fetchData = useCallback(async () => {
+    if (selectedGroupId !== selectedGroup.current) return;
+    const version = ++requestVersion.current;
     setLoading(true);
     setError(null);
     try {
@@ -113,6 +126,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         ),
         fetchJson<BudgetPlan[]>(`${API}/budgets`, undefined, selectedGroupId),
       ]);
+      if (version !== requestVersion.current) return;
       setGroups(groupRes.groups);
       if (selectedGroupId && !groupRes.groups.some((group) => group.id === selectedGroupId)) {
         setSelectedGroupId(null);
@@ -122,14 +136,17 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       setCategories(cats);
       setTransactions(txRes.transactions);
       setBudgetPlans(budgets);
+      setDataScope(selectedGroupId);
     } catch (e) {
+      if (version !== requestVersion.current) return;
       setError(e instanceof Error ? e.message : "Failed to load data");
       setAccounts([]);
       setCategories([]);
       setTransactions([]);
       setBudgetPlans([]);
+      setDataScope(undefined);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [selectedGroupId, setSelectedGroupId]);
 
@@ -153,8 +170,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
           undefined,
           selectedGroupId
         );
-        setTransactions(txRes.transactions);
-      } else {
+        if (selectedGroup.current === selectedGroupId) setTransactions(txRes.transactions);
+      } else if (selectedGroup.current === selectedGroupId) {
         setTransactions((prev) =>
           prev.some((t) => t.id === created.id) ? prev : [created, ...prev]
         );
@@ -324,6 +341,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       accounts,
       groups,
       selectedGroupId,
+      dataScope,
       categories,
       transactions,
       budgetPlans,
@@ -350,6 +368,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       accounts,
       groups,
       selectedGroupId,
+      dataScope,
       categories,
       transactions,
       budgetPlans,

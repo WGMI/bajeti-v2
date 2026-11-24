@@ -8,6 +8,7 @@ import {
   MessageSquare,
   FolderTree,
   Calendar,
+  ChartColumn,
   ChartNoAxesColumnIncreasing,
   Receipt,
   Settings,
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
   { href: "/dashboard/transactions", icon: Receipt, label: "Transactions" },
+  { href: "/dashboard/charts", icon: ChartColumn, label: "Charts" },
   { href: "/dashboard/messages", icon: MessageSquare, label: "Messages" },
   { href: "/dashboard/monthly", icon: Calendar, label: "Monthly view" },
   { href: "/dashboard/budgets", icon: ChartNoAxesColumnIncreasing, label: "Budgets" },
@@ -82,7 +84,7 @@ export function SidebarNavContent({ onLinkClick }: { onLinkClick?: () => void })
 
 export function DashboardSidebar() {
   return (
-    <aside className="sticky top-0 hidden h-screen w-16 shrink-0 self-start flex-col border-r bg-sidebar md:flex md:w-20 lg:w-56">
+    <aside className="sticky top-0 hidden h-screen w-16 shrink-0 self-start flex-col overflow-y-auto border-r bg-sidebar md:flex md:w-20 lg:w-56">
       <div className="relative flex flex-col">
         <SidebarNavContent />
       </div>

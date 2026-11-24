@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, Loader2, Filter, Search, X } from "lucide-react";
+import { ChartColumn, Pencil, Trash2, Loader2, Filter, Search, X } from "lucide-react";
 import { TransactionRow } from "@/components/dashboard/transaction-row";
 import { TransactionSubtitle } from "@/components/dashboard/transaction-subtitle";
 import { SortButton } from "@/components/dashboard/sort-button";
@@ -439,15 +440,21 @@ function TransactionsPageContent() {
   const applySearch = () => {
     setSearchQuery(searchInput);
   };
+  const chartParams = transactionFilterParams({ type: typeFilter, dateFrom, dateTo, search: searchQuery, accountId: accountFilter });
+  if (selectedCategoryId) chartParams.set("categoryId", selectedCategoryId);
+  if (selectedGroupId) chartParams.set("groupId", selectedGroupId);
 
   return (
     <>
       <div className="min-w-0 space-y-6">
         <Card className="min-w-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between p-4 pb-4 sm:p-6 sm:pb-4">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 p-4 pb-4 sm:p-6 sm:pb-4">
             <CardTitle className="text-base font-medium">
               {selectedAccount ? `${selectedAccount.name} transactions` : "All Transactions"}
             </CardTitle>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/dashboard/charts?${chartParams}`}><ChartColumn /> Chart this view</Link>
+            </Button>
           </CardHeader>
           {showCategoryCharts && (
             <div className="grid grid-cols-1 gap-6 border-b border-border/50 px-4 pt-4 pb-3 sm:grid-cols-2 sm:px-6">
