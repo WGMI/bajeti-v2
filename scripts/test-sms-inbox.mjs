@@ -17,6 +17,7 @@ const json = (value, init) => Response.json(value, init);
 const id = "11111111-1111-4111-8111-111111111111";
 const request = body => new Request("http://localhost/api/sms/inbox", { method: "POST", body: JSON.stringify(body) });
 const item = (overrides = {}) => ({ id, sender: "MPESA", message: "SMS", timestamp: Date.now(), status: "pending", previewStatus: "ready", preview: { amount: 100, transactionCharges: 5, type: "expense", date: "2026-11-16", categoryId: "cat" }, ...overrides });
+const smsParser = load("lib/sms-parser.ts", { "@/lib/currency-codes": load("lib/currency-codes.ts") });
 
 test("preview respects month, fees, transfers, dismissal and duplicate exclusions", () => {
   const { pendingSmsTotal } = load("lib/pending-sms-total.ts");
@@ -137,6 +138,7 @@ test("saved and pending balance use one snapshot and exclude the same saved SMS"
       assert.equal((await request.json()).message, "source");
       return json({ status: "ready", preview: item().preview, smsIdempotencyKey: "key" });
     } },
+    "./sms-parser": smsParser,
   });
   const result = await inspectPendingMessages("alice", "2026-11");
   assert.equal(snapshotQueries.length, 1);
@@ -145,6 +147,52 @@ test("saved and pending balance use one snapshot and exclude the same saved SMS"
   assert.equal(result.messages.length, 0);
   const { pendingSmsTotal } = load("lib/pending-sms-total.ts");
   assert.equal(result.savedBalance + pendingSmsTotal(result.messages, "2026-11", null).balance, -105);
+});
+
+test("the inbox recognizes old transfers and both confirmations for a saved transfer", async () => {
+  const bank = "KES 100 sent to M-PESA. MPESA Ref. UF1L66EON5";
+  const confirmation = "UF1L66EON5 Confirmed. Ksh100.00 received.";
+  const wrongAmount = "UF1L66EON5 Confirmed. Ksh200.00 received.";
+  const unrelated = "Ksh100.00 received from 0712345678.";
+  const legacy = "Ksh50.00 sent to Savings.";
+  const fingerprint = (text, purpose) => `${purpose}:${text}`;
+  const rows = [bank, confirmation, wrongAmount, unrelated, legacy].map((message, index) => ({
+    ...item(), id: String(index), message_encrypted: message, received_at: "2026-11-16T09:00:00Z",
+    fingerprint: fingerprint(message.toLowerCase(), "sms_raw"), transaction_id: null,
+  }));
+  const transfer = { type: "transfer", date: "2026-11-16", amount_encrypted: "100", transfer_group_id: "pair" };
+  const saved = [
+    { ...transfer, id: "out", transfer_leg: "out", sms_message: bank },
+    { ...transfer, id: "in", transfer_leg: "in" },
+    { ...transfer, id: "legacy", transfer_group_id: null, sms_message: legacy },
+  ];
+  const { inspectPendingMessages, inspectInboxStates, inspectInboxMessage } = load("lib/sms-inbox.ts", {
+    "./db": { sql: async (strings, ...values) => {
+      const query = strings.join("?");
+      assert.ok(values.includes("alice"));
+      if (query.includes("AS inbox")) {
+        assert.ok(query.includes("group_id IS NULL"));
+        return [{ inbox: rows, saved }];
+      }
+      if (query.includes("AND type = 'transfer'")) return saved;
+      return [];
+    } },
+    "./text-encryption": { decryptText: x => x, decryptNumber: Number, keyedFingerprint: fingerprint },
+    "./user-currency": { getUserCurrency: async () => "KES" },
+    "./user-sms-settings": { getSmsTransactionDateSource: async () => "received_at" },
+    "./bajeti-scope": { ensureDefaultCategoriesForScope: async () => {} },
+    "./sms-parser": smsParser,
+    "./sms-preview-service": { previewSms: async () => json({ status: "ready", preview: { ...item().preview, type: "transfer" } }) },
+  });
+  const result = await inspectPendingMessages("alice", "2026-11");
+  assert.deepEqual(Array.from(result.messages, message => message.id), ["2", "3"]);
+  const { pendingSmsTotal } = load("lib/pending-sms-total.ts");
+  assert.equal(pendingSmsTotal(result.messages, "2026-11", null).count, 2);
+  const states = await inspectInboxStates("alice");
+  assert.deepEqual(Array.from(states, state => state.status), ["synced", "synced", "pending", "pending", "synced"]);
+  const duplicate = await inspectInboxMessage("alice", rows[1]);
+  assert.equal(duplicate.previewStatus, "duplicate");
+  assert.equal(duplicate.transactionId, "out");
 });
 
 test("direct SMS saves use the same canonical key as automatic imports, with legacy lookup", async () => {
